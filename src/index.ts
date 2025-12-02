@@ -11,12 +11,15 @@ import {
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { LayerOpsApiClient } from './api/client.js';
 import type { LayerOpsConfig } from './types/index.js';
 import { DOCUMENTATION_RESOURCES } from './resources/documentation.js';
 import { createTools, executeTool } from './tools/index.js';
+import { PROMPTS } from './prompts/index.js';
 
 // Configuration depuis les variables d'environnement
 const config: LayerOpsConfig = {
@@ -44,6 +47,7 @@ const server = new Server(
     capabilities: {
       resources: {},
       tools: {},
+      prompts: {},
     },
   }
 );
@@ -169,6 +173,51 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true,
     };
   }
+});
+
+// Liste des prompts
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  return {
+    prompts: PROMPTS.map((prompt) => ({
+      name: prompt.name,
+      description: prompt.description,
+      arguments: prompt.arguments?.map((arg) => ({
+        name: arg.name,
+        description: arg.description,
+        required: arg.required || false,
+      })) || [],
+    })),
+  };
+});
+
+// Récupération d'un prompt spécifique
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const prompt = PROMPTS.find((p) => p.name === request.params.name);
+  if (!prompt) {
+    throw new Error(`Prompt non trouvé: ${request.params.name}`);
+  }
+  
+  // Construire le message avec les arguments si fournis
+  let promptText = prompt.description;
+  if (request.params.arguments && Object.keys(request.params.arguments).length > 0) {
+    // Ajouter les arguments au prompt
+    const argsText = Object.entries(request.params.arguments)
+      .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+      .join('\n');
+    promptText = `${prompt.description}\n\nArguments fournis:\n${argsText}`;
+  }
+  
+  return {
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: promptText,
+        },
+      },
+    ],
+  };
 });
 
 // Gestion des erreurs
