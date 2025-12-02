@@ -23,6 +23,14 @@ Ce projet est un Proof of Concept (POC) et peut contenir des bugs, des failles d
 - ✅ **Authentification flexible** : Support des tokens API avec préparation pour OAuth2
 - ✅ **MCP Inspector** : Outil de débogage intégré
 
+## Prérequis
+
+- **Node.js >= 18.0.0** (requis pour l'API `fetch` native)
+- npm ou yarn
+- Un compte LayerOps avec des credentials API
+
+**Note importante** : Ce projet nécessite Node.js 18 ou supérieur car il utilise l'API `fetch` native qui n'est disponible qu'à partir de Node.js 18.
+
 ## Installation
 
 ```bash

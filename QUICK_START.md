@@ -2,6 +2,12 @@
 
 Ce guide vous aidera à démarrer rapidement avec le serveur MCP LayerOps.
 
+## Prérequis
+
+- **Node.js >= 18.0.0** (requis pour l'API `fetch` native)
+- npm ou yarn
+- Un compte LayerOps avec des credentials API
+
 ## Installation
 
 1. **Installer les dépendances** :
