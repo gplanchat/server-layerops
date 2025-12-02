@@ -1120,5 +1120,363 @@ EXEMPLE DE SÉQUENCE :
       },
     ],
   },
+  {
+    name: 'layerops-convert-kubernetes',
+    description: `Convertit des fichiers de ressources Kubernetes (YAML) en spécification LayerOps et déploie l'infrastructure correspondante.
+
+INSTRUCTIONS DÉTAILLÉES :
+1. Lire et parser les fichiers Kubernetes fournis (format YAML) :
+   - Parser chaque fichier YAML fourni
+   - Identifier le type de chaque ressource (kind: Deployment, Service, ConfigMap, Secret, etc.)
+   - Extraire les métadonnées (name, namespace, labels, annotations)
+   - Valider la structure de chaque ressource
+2. Analyser les ressources Kubernetes principales :
+   - Deployments → Services LayerOps (conversion principale)
+   - StatefulSets → Services LayerOps avec countMin=countMax=1
+   - Services (ClusterIP, LoadBalancer, NodePort) → Configuration de ports LayerOps
+   - ConfigMaps → Variables d'environnement LayerOps
+   - Secrets → Variables d'environnement sécurisées LayerOps (isSensitive: true)
+   - PersistentVolumeClaims → Volumes LayerOps (documenter les besoins)
+   - Ingress → loadBalancerRules avec customDomains
+   - Jobs/CronJobs → Services LayerOps avec cronExpression
+   - DaemonSets → Noter pour documentation (utiliser constraints.tags)
+3. Pour chaque Deployment/StatefulSet identifié :
+   - Extraire l'image container (spec.template.spec.containers[0].image)
+   - Séparer image et tag : "nginx:1.21" → {image: "nginx", imageVersion: "1.21"}
+   - Détecter si registry privé (présence de "/" dans le nom d'image)
+   - Extraire les ports exposés (spec.template.spec.containers[0].ports)
+   - Extraire les variables d'environnement (spec.template.spec.containers[0].env)
+   - Extraire envFrom (ConfigMaps et Secrets)
+   - Extraire les ressources (requests/limits CPU/memory)
+   - Extraire le nombre de replicas (spec.replicas)
+   - Extraire command et args
+   - Identifier les liveness/readiness probes
+   - Identifier les initContainers (convertir en sideTasks)
+   - Identifier les volumes et volumeMounts
+4. Convertir les ressources Kubernetes en format LayerOps conforme au schéma :
+   - Deployment/StatefulSet → Service LayerOps avec structure complète :
+     * name: metadata.name (avec préfixe si fourni)
+     * dockerConfiguration:
+       - image: nom de l'image sans tag
+       - imageVersion: tag de l'image
+       - isPrivateRegistry: true si registry privé détecté
+       - secretUuid: UUID du secret pour registry privé (si nécessaire)
+       - command: commande du container
+       - args: arguments de la commande
+       - hostname: hostname personnalisé (si configuré)
+     * countMin: spec.replicas (ou minReplicas du HPA)
+     * countMax: spec.replicas (ou maxReplicas du HPA)
+     * ports: convertir les ports avec structure complète
+     * environmentVariables: consolider env + envFrom
+     * type: "classic"
+     * cpuLimit, memoryLimitMiB: convertir depuis resources
+     * healthCheck: convertir depuis liveness/readiness probes
+   - Service Kubernetes → Configuration de ports LayerOps :
+     * ClusterIP → ports sans loadBalancerRules
+     * LoadBalancer → ports avec loadBalancerRules et publicPort
+     * NodePort → ports avec loadBalancerRules et publicPort (nodePort)
+   - ConfigMap → environmentVariables avec isSensitive: false
+   - Secret → environmentVariables avec isSensitive: true (décoder base64)
+   - Ingress → loadBalancerRules avec customDomains
+5. Gérer les dépendances entre ressources :
+   - Analyser les références (Service → Deployment, ConfigMap → Deployment, etc.)
+   - Créer un ordre de déploiement logique
+   - Configurer les variables d'environnement pour les connexions entre services
+   - Utiliser les noms de services LayerOps pour les URLs
+   - Configurer les links entre services si nécessaire
+6. Gérer les namespaces :
+   - Si plusieurs namespaces : créer un service par namespace ou utiliser servicePrefix
+   - Si un seul namespace : utiliser directement les noms
+7. Si projectName et environmentId sont fournis :
+   - Vérifier que l'environnement existe avec layerops_get_environment
+   - Déployer chaque service dans l'ordre avec layerops_create_service
+   - Configurer toutes les propriétés selon le schéma LayerOps
+   - Attendre la confirmation de chaque service avant le suivant
+8. Si projectName et environmentId ne sont pas fournis :
+   - Générer uniquement la spécification LayerOps (YAML conforme au schéma)
+   - Ne pas déployer, seulement documenter
+9. Générer un rapport de conversion avec :
+   - Résumé des ressources converties
+   - Mappings Kubernetes → LayerOps
+   - Limitations et différences
+   - Instructions pour les éléments nécessitant une configuration manuelle
+   - Plan de déploiement si applicable
+
+SCHÉMA DE RÉFÉRENCE LAYEROPS :
+La conversion DOIT suivre le schéma officiel LayerOps disponible à :
+https://console.layerops.com/api/v1/services/exampleImportYml?format=text
+
+STRUCTURE DE SERVICE LAYEROPS (conforme au schéma de référence) :
+Voir la structure complète dans les prompts layerops-convert-docker-compose et layerops-convert-helm ci-dessus.
+
+FORMAT DES ARGUMENTS :
+- kubernetesFiles: string ou array (requis) - Contenu des fichiers Kubernetes YAML (un ou plusieurs), ou chemins vers les fichiers. Peut être un fichier unique, un tableau de fichiers, ou un YAML multi-document.
+- projectName: string (optionnel) - Nom du projet LayerOps. Si fourni avec environmentId, déploie l'infrastructure
+- environmentId: string (optionnel) - ID de l'environnement LayerOps. Si fourni avec projectName, déploie l'infrastructure
+- outputFormat: string (optionnel, défaut: "spec") - Format de sortie : "spec" (spécification uniquement), "deploy" (déployer), ou "both" (spécification + déploiement)
+- servicePrefix: string (optionnel) - Préfixe à ajouter aux noms de services (ex: "prod-", "k8s-")
+- namespaceFilter: string ou array (optionnel) - Namespaces à inclure (ex: "default", ["production", "staging"]). Si non fourni, inclure tous les namespaces
+- resourceTypes: array (optionnel) - Types de ressources à convertir : ["deployments", "statefulsets", "services", "configmaps", "secrets"]. Défaut: tous les types supportés
+- portMapping: object (optionnel) - Mappings personnalisés de ports : {serviceName: {containerPort: hostPort}}
+- registrySecrets: object (optionnel) - Mapping des secrets Kubernetes vers secretUuid LayerOps : {namespace/secret-name: "layerops-secret-uuid"}
+
+CONVERSIONS DÉTAILLÉES :
+
+1. Deployment Kubernetes → Service LayerOps :
+   - metadata.name → name (avec préfixe si fourni)
+   - spec.template.spec.containers[0].image → dockerConfiguration:
+     * "nginx:1.21" → {image: "nginx", imageVersion: "1.21", isPrivateRegistry: false}
+     * "myregistry/app:v2.0" → {image: "myregistry/app", imageVersion: "v2.0", isPrivateRegistry: true}
+     * Si imagePullSecrets présent → isPrivateRegistry: true, secretUuid requis
+   - spec.template.spec.containers[0].command → dockerConfiguration.command
+   - spec.template.spec.containers[0].args → dockerConfiguration.args
+   - spec.template.spec.containers[0].ports → ports:
+     * containerPort: 8080 → {listeningPort: 8080, protocol: "tcp"}
+     * name: "http" → utiliser pour identifier le port
+   - spec.template.spec.containers[0].env → environmentVariables:
+     * {name: "KEY", value: "value"} → {key: "KEY", value: "value", isSensitive: false}
+     * {name: "SECRET", valueFrom: {secretKeyRef: ...}} → {key: "SECRET", value: <décodé>, isSensitive: true}
+   - spec.template.spec.containers[0].envFrom → environmentVariables (consolidé depuis ConfigMaps/Secrets)
+   - spec.replicas → countMin et countMax (même valeur si pas de HPA)
+   - spec.template.spec.containers[0].resources → cpuLimit, memoryLimitMiB:
+     * requests.cpu: "500m" → cpuLimit: 50 (en pourcentage, 500m = 0.5 CPU = 50%)
+     * limits.cpu: "1000m" → cpuLimitHigh: 100
+     * requests.memory: "512Mi" → memoryLimitMiB: 512
+     * limits.memory: "1Gi" → memoryLimitHigh: 1024
+
+2. Liveness/Readiness Probes → healthCheck :
+   - livenessProbe.httpGet → healthCheck:
+     * path: "/health" → healthCheckPath: "/health"
+     * port: 8080 → utiliser listeningPort correspondant
+     * scheme: "HTTP" → healthCheckType: "HTTP"
+     * httpHeaders → noter pour documentation (LayerOps peut avoir des limitations)
+   - livenessProbe.tcpSocket → healthCheckType: "TCP"
+   - livenessProbe.timeoutSeconds → healthCheckTimeoutSeconds
+   - livenessProbe.periodSeconds → healthCheckIntervalSeconds
+   - readinessProbe → utiliser pour healthCheck si livenessProbe absent
+
+3. InitContainers → sideTasks :
+   - spec.template.spec.initContainers → sideTasks:
+     * [{dockerConfiguration: {image: "...", imageVersion: "..."}, type: "preStart", cpuLimit: 100, memoryLimitMiB: 128}]
+
+4. Service Kubernetes → Configuration de ports LayerOps :
+   - spec.type: "ClusterIP" → ports sans loadBalancerRules (port interne uniquement)
+   - spec.type: "LoadBalancer" → ports avec loadBalancerRules:
+     * spec.ports[].port → loadBalancerRules[].publicPort
+     * spec.ports[].targetPort → listeningPort (résoudre si nom de port)
+   - spec.type: "NodePort" → ports avec loadBalancerRules:
+     * spec.ports[].nodePort → loadBalancerRules[].publicPort
+     * spec.ports[].targetPort → listeningPort
+   - spec.ports[].protocol → protocol ("TCP" ou "UDP")
+
+5. ConfigMap → environmentVariables :
+   - data → environmentVariables:
+     * {key: "KEY", value: "value", isSensitive: false}
+   - binaryData → noter pour documentation (nécessite traitement spécial)
+
+6. Secret → environmentVariables :
+   - data → environmentVariables (décoder base64):
+     * {key: "KEY", value: <décodé>, isSensitive: true}
+   - stringData → environmentVariables:
+     * {key: "KEY", value: "value", isSensitive: true}
+
+7. Ingress → loadBalancerRules.customDomains :
+   - spec.rules[].host → customDomains
+   - spec.tls[].hosts → customDomains (avec HTTPS, noter pour documentation)
+   - spec.rules[].http.paths[].backend.service.port → utiliser pour identifier le port
+
+8. HPA (HorizontalPodAutoscaler) → Scaling LayerOps :
+   - minReplicas → countMin
+   - maxReplicas → countMax
+   - metrics → cpuLimitHigh, cpuLimitLow, memoryLimitHigh, memoryLimitLow:
+     * type: "Resource", resource.name: "cpu", resource.target.averageUtilization: 80 → cpuLimitHigh: 80
+     * type: "Resource", resource.name: "memory", resource.target.averageUtilization: 80 → memoryLimitHigh: 80
+   - behavior → cooldownMinutes, cpuDurationMinutes, memoryDurationMinutes
+
+9. PersistentVolumeClaims → volumes :
+   - PVC → volumes avec persistentSharedVolumeUuid ou sharedVolumeNfsUuid
+   - Noter le nom du PVC et le volumeMount correspondant pour référence
+   - Si volumeMount présent dans Deployment → configurer le volume LayerOps
+
+10. Jobs/CronJobs → cronExpression :
+    - spec.schedule → cronExpression (convertir format Kubernetes vers cron standard)
+    - spec.concurrencyPolicy → cronAllowOverlap (si "Allow" → true, sinon false)
+    - spec.jobTemplate.spec.template → convertir en Service LayerOps avec cronExpression
+
+11. StatefulSets :
+    - Convertir comme Deployment mais avec countMin=countMax=1 (ou selon spec.replicas)
+    - Noter les différences (volumes persistants, ordre de démarrage)
+
+12. DaemonSets :
+    - Noter pour documentation (non directement supporté)
+    - Suggérer d'utiliser constraints.tags pour limiter aux instances spécifiques
+
+FORMAT DE SORTIE :
+La configuration générée DOIT être au format YAML conforme au schéma de référence LayerOps.
+Chaque service doit suivre exactement la structure définie dans le schéma officiel.
+
+EXEMPLE DE CONFIGURATION GÉNÉRÉE (format YAML) :
+services:
+  - name: api-service
+    dockerConfiguration:
+      image: myregistry/api
+      imageVersion: v1.2.0
+      isPrivateRegistry: true
+      secretUuid: "secret-uuid-from-registrySecrets"
+      command:
+        - /app/start.sh
+      args:
+        - --env=production
+    countMin: 2
+    countMax: 10
+    ports:
+      - listeningPort: 8080
+        protocol: tcp
+        healthCheck:
+          healthCheckType: HTTP
+          healthCheckPath: /health
+          healthCheckMethod: GET
+          healthCheckEnabled: true
+          healthCheckTimeoutSeconds: 5
+          healthCheckIntervalSeconds: 30
+        loadBalancerRules:
+          - publicPort: 80
+            customDomains:
+              - api.example.com
+    environmentVariables:
+      - key: ENV
+        value: production
+        isSensitive: false
+      - key: DB_PASSWORD
+        value: "decoded-secret-value"
+        isSensitive: true
+      - key: CONFIG_KEY
+        value: "value-from-configmap"
+        isSensitive: false
+    type: classic
+    cpuLimit: 100
+    cpuLimitHigh: 80
+    cpuLimitLow: 50
+    cpuDurationMinutes: 15
+    cpuWindowMinutes: 5
+    memoryLimitMiB: 1024
+    memoryLimitHigh: 80
+    memoryLimitLow: 50
+    memoryDurationMinutes: 15
+    memoryWindowMinutes: 5
+    cooldownMinutes: 5
+    sideTasks:
+      - dockerConfiguration:
+          image: busybox
+          imageVersion: latest
+        type: preStart
+        cpuLimit: 100
+        memoryLimitMiB: 128
+
+LIMITATIONS ET NOTES :
+- PersistentVolumeClaims : Convertir en volumes LayerOps avec persistentSharedVolumeUuid ou sharedVolumeNfsUuid (nécessite configuration manuelle)
+- Ingress TLS : Noter pour documentation (LayerOps gère HTTPS différemment)
+- ServiceAccounts : Noter pour documentation (gestion différente via LayerOps RBAC)
+- RBAC (Roles, RoleBindings) : Géré via LayerOps RBAC, documenter les besoins
+- NetworkPolicies : Noter pour documentation (LayerOps gère différemment via links)
+- ResourceQuotas/LimitRanges : Noter pour documentation (LayerOps gère différemment)
+- PodDisruptionBudgets : Noter pour documentation (LayerOps gère la haute disponibilité automatiquement)
+- Affinity/Anti-affinity : Convertir en constraints (instancePoolUuids, providerUuids, tags)
+- Tolerations : Noter pour documentation (gestion différente)
+- InitContainers : Convertir en sideTasks avec type: "preStart"
+- Sidecars : Noter pour documentation (nécessite adaptation, possiblement via sideTasks)
+- Custom Resources (CRDs) : Noter pour documentation (nécessite traitement manuel)
+
+VALIDATIONS :
+- Vérifier que les fichiers Kubernetes sont valides (YAML valide)
+- Vérifier que toutes les images référencées sont accessibles
+- Vérifier que les ports ne sont pas en conflit
+- Vérifier que les dépendances sont valides (pas de cycles)
+- Vérifier que les références entre ressources sont valides (Service → Deployment, ConfigMap → Deployment, etc.)
+- Si déploiement : vérifier que l'environnement existe
+
+GESTION DES ERREURS :
+- Si un fichier Kubernetes est invalide : retourner erreur avec détails
+- Si une ressource ne peut pas être convertie : alerter mais continuer avec les autres
+- Si une image n'est pas accessible : alerter mais continuer
+- Si un port est en conflit : suggérer un port alternatif
+- Si une dépendance est manquante : arrêter et alerter
+- Si une référence est invalide : alerter et noter pour documentation
+- Si le déploiement échoue : retourner l'état partiel et les erreurs
+
+EXEMPLE DE SÉQUENCE :
+1. Parser deployment.yaml et service.yaml
+2. Identifier Deployment "api" et Service "api-service"
+3. Extraire :
+   - image: "myregistry/api:v1.2.0"
+   - ports: [{containerPort: 8080}]
+   - env: [{name: "ENV", value: "production"}]
+   - replicas: 3
+   - resources: {requests: {cpu: "500m", memory: "512Mi"}}
+   - livenessProbe: {httpGet: {path: "/health", port: 8080}}
+4. Parser configmap.yaml → ConfigMap "api-config"
+5. Consolider env: Deployment env + ConfigMap data
+6. Parser service.yaml → Service "api-service" type LoadBalancer
+7. Configurer loadBalancerRules avec publicPort depuis Service
+8. Si déploiement demandé :
+   - layerops_create_service({
+       name: "api-service",
+       dockerConfiguration: {image: "myregistry/api", imageVersion: "v1.2.0", isPrivateRegistry: true},
+       countMin: 3,
+       countMax: 3,
+       ports: [{listeningPort: 8080, healthCheck: {...}, loadBalancerRules: [{publicPort: 80}]}],
+       environmentVariables: [{key: "ENV", value: "production", isSensitive: false}, ...],
+       cpuLimit: 50,
+       memoryLimitMiB: 512
+     })
+9. Générer rapport avec mappings et limitations`,
+    arguments: [
+      {
+        name: 'kubernetesFiles',
+        description: 'Contenu des fichiers Kubernetes YAML (un ou plusieurs), ou chemins vers les fichiers. Peut être un fichier unique, un tableau de fichiers, ou un YAML multi-document séparé par "---". Les fichiers doivent être valides et contenir au moins une ressource Kubernetes (Deployment, Service, ConfigMap, Secret, etc.).',
+        required: true,
+      },
+      {
+        name: 'projectName',
+        description: 'Nom du projet LayerOps. Si fourni avec environmentId, l\'infrastructure sera déployée. Si non fourni, seule la spécification sera générée.',
+        required: false,
+      },
+      {
+        name: 'environmentId',
+        description: 'ID de l\'environnement LayerOps (format: "env-xxx"). Si fourni avec projectName, l\'infrastructure sera déployée. Vérifier d\'abord que l\'environnement existe.',
+        required: false,
+      },
+      {
+        name: 'outputFormat',
+        description: 'Format de sortie : "spec" (générer uniquement la spécification LayerOps), "deploy" (déployer l\'infrastructure), ou "both" (spécification + déploiement, défaut si projectName/environmentId fournis).',
+        required: false,
+      },
+      {
+        name: 'servicePrefix',
+        description: 'Préfixe à ajouter aux noms de services LayerOps (ex: "prod-", "k8s-", "migrated-"). Utile pour éviter les conflits de noms et identifier les services migrés.',
+        required: false,
+      },
+      {
+        name: 'namespaceFilter',
+        description: 'Namespaces Kubernetes à inclure dans la conversion. Format: "default" (un seul namespace) ou ["production", "staging"] (plusieurs namespaces). Si non fourni, inclure tous les namespaces trouvés dans les fichiers.',
+        required: false,
+      },
+      {
+        name: 'resourceTypes',
+        description: 'Types de ressources Kubernetes à convertir. Format: ["deployments", "statefulsets", "services", "configmaps", "secrets", "ingress"]. Défaut: tous les types supportés. Utile pour filtrer et ne convertir que certains types.',
+        required: false,
+      },
+      {
+        name: 'portMapping',
+        description: 'Mappings personnalisés de ports. Format: {serviceName: {containerPort: hostPort}}. Exemple: {"api": {8080: 80}, "web": {3000: 3000}}. Utile pour surcharger les mappings de ports automatiques.',
+        required: false,
+      },
+      {
+        name: 'registrySecrets',
+        description: 'Mapping des secrets Kubernetes (imagePullSecrets) vers les secretUuid LayerOps pour les registries privés. Format: {"namespace/secret-name": "layerops-secret-uuid"}. Exemple: {"default/registry-secret": "uuid-123-456"}.',
+        required: false,
+      },
+    ],
+  },
 ];
 

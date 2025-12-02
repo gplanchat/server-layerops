@@ -399,6 +399,146 @@ myapp-chart/
 - Instructions pour éléments non supportés
 - Plan de déploiement si applicable
 
+### 9. Conversion Kubernetes (YAML) vers LayerOps
+
+**Prompt**: `layerops-convert-kubernetes`
+
+Convertit des fichiers de ressources Kubernetes (YAML) en spécification LayerOps et peut déployer l'infrastructure correspondante. Ce prompt facilite la migration directe de ressources Kubernetes vers LayerOps sans passer par Helm.
+
+**Instructions détaillées** :
+1. Parser et valider les fichiers Kubernetes YAML (un ou plusieurs)
+2. Identifier le type de chaque ressource (Deployment, Service, ConfigMap, Secret, Ingress, etc.)
+3. Extraire les ressources principales :
+   - Deployments/StatefulSets → Services LayerOps
+   - Services → Configuration de ports LayerOps
+   - ConfigMaps → Variables d'environnement
+   - Secrets → Variables d'environnement sécurisées
+   - Ingress → loadBalancerRules avec customDomains
+   - Jobs/CronJobs → Services avec cronExpression
+4. Convertir chaque ressource au format LayerOps conforme au schéma de référence
+5. Gérer les dépendances entre ressources (Service → Deployment, ConfigMap → Deployment)
+6. Consolider les variables d'environnement (env + envFrom)
+7. Convertir les probes (liveness/readiness) en healthCheck
+8. Convertir les initContainers en sideTasks
+9. Si déploiement demandé : déployer chaque service dans l'ordre
+10. Générer un rapport de conversion complet
+
+**Arguments**:
+- `kubernetesFiles` (requis) : Contenu des fichiers Kubernetes YAML (un ou plusieurs), ou chemins vers les fichiers. Peut être un fichier unique, un tableau de fichiers, ou un YAML multi-document séparé par "---"
+- `projectName` (optionnel) : Nom du projet LayerOps. Si fourni avec environmentId, déploie l'infrastructure
+- `environmentId` (optionnel) : ID de l'environnement LayerOps. Si fourni avec projectName, déploie l'infrastructure
+- `outputFormat` (optionnel, défaut: "spec") : "spec" (spécification uniquement), "deploy" (déployer), ou "both"
+- `servicePrefix` (optionnel) : Préfixe pour les noms de services (ex: "k8s-", "migrated-")
+- `namespaceFilter` (optionnel) : Namespaces à inclure : "default" ou ["production", "staging"]
+- `resourceTypes` (optionnel) : Types de ressources à convertir : ["deployments", "statefulsets", "services", "configmaps", "secrets", "ingress"]
+- `portMapping` (optionnel) : Mappings personnalisés de ports
+- `registrySecrets` (optionnel) : Mapping des secrets Kubernetes vers secretUuid LayerOps : {"namespace/secret-name": "layerops-secret-uuid"}
+
+**Conversions supportées** :
+- **Deployments** → Services LayerOps avec dockerConfiguration, ports, environmentVariables, countMin/countMax
+- **StatefulSets** → Services LayerOps (comme Deployment mais avec countMin=countMax=1)
+- **Services** → Configuration de ports LayerOps (ClusterIP, LoadBalancer, NodePort)
+- **ConfigMaps** → environmentVariables avec isSensitive: false
+- **Secrets** → environmentVariables avec isSensitive: true (décodage base64)
+- **Ingress** → loadBalancerRules avec customDomains
+- **Jobs/CronJobs** → Services avec cronExpression
+- **Liveness/Readiness Probes** → healthCheck dans ports
+- **InitContainers** → sideTasks avec type: "preStart"
+- **HPA** → Paramètres de scaling (cpuLimitHigh/Low, memoryLimitHigh/Low, countMin/Max)
+- **Resources (CPU/memory)** → cpuLimit, memoryLimitMiB, et paramètres de scaling
+
+**Schéma de référence** :
+La conversion suit le schéma officiel LayerOps disponible à :
+https://console.layerops.com/api/v1/services/exampleImportYml?format=text
+
+**Limitations** :
+- PersistentVolumeClaims : Convertir en volumes LayerOps (nécessite configuration manuelle des UUIDs)
+- Ingress TLS : Noter pour documentation (LayerOps gère HTTPS différemment)
+- ServiceAccounts : Noter pour documentation (gestion différente via LayerOps RBAC)
+- RBAC (Roles, RoleBindings) : Géré via LayerOps RBAC, documenter les besoins
+- NetworkPolicies : Noter pour documentation (LayerOps gère différemment via links)
+- ResourceQuotas/LimitRanges : Noter pour documentation
+- PodDisruptionBudgets : Noter pour documentation (LayerOps gère la HA automatiquement)
+- Affinity/Anti-affinity : Convertir en constraints (instancePoolUuids, providerUuids, tags)
+- Tolerations : Noter pour documentation
+- Sidecars : Noter pour documentation (nécessite adaptation via sideTasks)
+- Custom Resources (CRDs) : Noter pour documentation (nécessite traitement manuel)
+
+**Exemple d'utilisation**:
+```
+Convertit mes ressources Kubernetes vers LayerOps :
+- Fichiers : [deployment.yaml, service.yaml, configmap.yaml]
+- Projet : "MonApp"
+- Environnement : env-123
+- Format : "both" (spécification + déploiement)
+- Préfixe : "k8s-"
+- Namespaces : ["production"]
+- Types de ressources : ["deployments", "services", "configmaps", "secrets"]
+```
+
+**Exemple de fichiers Kubernetes** :
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: api
+        image: myregistry/api:v1.2.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ENV
+          value: production
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          periodSeconds: 30
+
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: api
+
+# configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+data:
+  CONFIG_KEY: "value"
+```
+
+**Rapport généré** :
+- Résumé des ressources converties par type
+- Mappings Kubernetes → LayerOps détaillés
+- Ordre de déploiement recommandé
+- Limitations et différences par type de ressource
+- Instructions pour éléments nécessitant configuration manuelle
+- Plan de déploiement si applicable
+- Références au schéma de référence LayerOps
+
 ## Bonnes pratiques
 
 1. **Toujours vérifier avant de supprimer** : Utilisez `layerops_get_*` pour vérifier les ressources avant suppression
@@ -407,4 +547,5 @@ myapp-chart/
 4. **Consulter les événements** : Utilisez `layerops_list_events` pour suivre l'historique des actions
 5. **Migration Docker Compose** : Utilisez `layerops-convert-docker-compose` pour migrer vos applications existantes
 6. **Migration Helm** : Utilisez `layerops-convert-helm` pour migrer vos charts Helm vers LayerOps
+7. **Migration Kubernetes** : Utilisez `layerops-convert-kubernetes` pour migrer vos ressources Kubernetes (YAML) vers LayerOps
 

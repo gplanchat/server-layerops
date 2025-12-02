@@ -110,6 +110,7 @@ La documentation complète des fonctionnalités est disponible dans le dossier `
 - [FEATURE011 - Authentification](documentation/features/FEATURE011-authentification.md)
 - [FEATURE012 - Conversion Docker Compose](documentation/features/FEATURE012-conversion-docker-compose.md)
 - [FEATURE013 - Conversion Helm](documentation/features/FEATURE013-conversion-helm.md)
+- [FEATURE014 - Conversion Kubernetes](documentation/features/FEATURE014-conversion-kubernetes.md)
 
 ### Prompts
 
@@ -120,6 +121,8 @@ Les prompts pour la gestion de l'infrastructure sont documentés dans [documenta
 **Fonctionnalités spéciales** :
 - Le prompt `layerops-convert-docker-compose` permet de convertir automatiquement un fichier Docker Compose en spécification LayerOps
 - Le prompt `layerops-convert-helm` permet de convertir un chart Helm/Kubernetes en spécification LayerOps
+- Le prompt `layerops-convert-kubernetes` permet de convertir des fichiers de ressources Kubernetes (YAML) en spécification LayerOps
+- Tous les prompts de conversion suivent le schéma de référence LayerOps officiel (https://console.layerops.com/api/v1/services/exampleImportYml?format=text)
 - Ces prompts facilitent grandement la migration d'applications existantes vers LayerOps
 
 ## Structure du projet
