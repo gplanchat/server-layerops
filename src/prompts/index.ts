@@ -603,31 +603,159 @@ FORMAT DES ARGUMENTS :
 - portMapping: object (optionnel) - Mappings personnalisés de ports : {serviceName: {containerPort: hostPort}}
 - envFile: string (optionnel) - Contenu du fichier .env pour résoudre les variables d'environnement
 
+SCHÉMA DE RÉFÉRENCE LAYEROPS :
+La conversion DOIT suivre le schéma officiel LayerOps disponible à :
+https://console.layerops.com/api/v1/services/exampleImportYml?format=text
+
+STRUCTURE DE SERVICE LAYEROPS (conforme au schéma de référence) :
+services:
+  - id: string (généré automatiquement ou optionnel)
+    name: string (nom du service)
+    dockerConfiguration:
+      image: string (nom de l'image sans tag)
+      imageVersion: string (tag de l'image, ex: "latest", "1.0.0")
+      isPrivateRegistry: boolean (true si registry privé)
+      secretUuid: string (UUID du secret pour registry privé, si isPrivateRegistry=true)
+      command: [string] (commande à exécuter, optionnel)
+      args: [string] (arguments de la commande, optionnel)
+      hostname: string (hostname personnalisé, optionnel)
+    countMin: number (nombre minimum de répliques, défaut: 1)
+    countMax: number (nombre maximum de répliques, défaut: 1)
+    ports:
+      - listeningPort: number (port d'écoute du container)
+        protocol: string ("tcp" ou "udp", défaut: "tcp")
+        healthCheck:
+          healthCheckType: string ("HTTP", "TCP", "UDP", etc.)
+          healthCheckPath: string (chemin pour HTTP, ex: "/")
+          healthCheckMethod: string (méthode HTTP, ex: "GET")
+          healthCheckEnabled: boolean
+          healthCheckTimeoutSeconds: number
+          healthCheckIntervalSeconds: number
+        loadBalancerRules:
+          - customDomains: [string] (domaines personnalisés)
+            publicPort: number (port public exposé)
+    environmentVariables:
+      - key: string
+        value: string
+        isSensitive: boolean (true pour secrets)
+    sharedEnvironmentVariables: [string] (clés de variables partagées)
+    type: string ("classic" ou autre type supporté)
+    volumes: [...] (voir schéma complet pour détails)
+    links: [...] (connexions entre services)
+    cooldownMinutes: number (minutes de cooldown pour scaling)
+    cpuLimit: number (limite CPU en pourcentage)
+    cpuLimitHigh: number (seuil haut pour scaling CPU)
+    cpuLimitLow: number (seuil bas pour scaling CPU)
+    cpuDurationMinutes: number
+    cpuWindowMinutes: number
+    memoryLimitMiB: number (limite mémoire en MiB)
+    memoryLimitHigh: number (seuil haut pour scaling mémoire)
+    memoryLimitLow: number (seuil bas pour scaling mémoire)
+    memoryDurationMinutes: number
+    memoryWindowMinutes: number
+    constraints:
+      instancePoolUuids: [string]
+      providerUuids: [string]
+      tags: [string]
+    sideTasks: [...] (tâches pré/post démarrage)
+    runningSchedule: {...} (planification d'exécution)
+    scalingSchedule: {...} (planification de scaling)
+    files: [...] (fichiers à créer dans le container)
+    cronExpression: string (expression cron pour jobs)
+    cronAllowOverlap: boolean
+    databaseBackups: [...] (sauvegardes de bases de données)
+    isPaused: boolean (service en pause)
+    useNvidiaGpu: boolean (utiliser GPU NVIDIA)
+
 CONVERSIONS DÉTAILLÉES :
 
-1. Ports Docker Compose → LayerOps :
-   - "8080:80" → [{containerPort: 80, hostPort: 8080}]
-   - "80" → [{containerPort: 80}]
-   - "8080-8090:80-90" → [{containerPort: 80, hostPort: 8080}, ..., {containerPort: 90, hostPort: 8090}]
-   - [8080, "9090:90"] → [{containerPort: 8080}, {containerPort: 90, hostPort: 9090}]
+1. Image Docker Compose → dockerConfiguration LayerOps :
+   - "nginx:latest" → {image: "nginx", imageVersion: "latest"}
+   - "myregistry/app:v1.0" → {image: "myregistry/app", imageVersion: "v1.0", isPrivateRegistry: true}
+   - Si registry privé détecté : isPrivateRegistry: true, secretUuid requis
 
-2. Variables d'environnement :
-   - KEY=value → {KEY: "value"}
+2. Ports Docker Compose → ports LayerOps :
+   - "8080:80" → [{listeningPort: 80, protocol: "tcp", loadBalancerRules: [{publicPort: 8080}]}]
+   - "80" → [{listeningPort: 80, protocol: "tcp"}]
+   - "8080-8090:80-90" → générer un port pour chaque mapping
+   - Healthcheck Docker Compose → healthCheck dans ports :
+     * test: ["CMD", "curl", "-f", "http://localhost:80/"] → healthCheckType: "HTTP", healthCheckPath: "/"
+     * interval: 30s → healthCheckIntervalSeconds: 30
+     * timeout: 10s → healthCheckTimeoutSeconds: 10
+
+3. Variables d'environnement :
+   - KEY=value → {key: "KEY", value: "value", isSensitive: false}
    - KEY (sans valeur) → chercher dans .env ou utiliser valeur par défaut
    - \${VAR} ou $VAR → résoudre depuis .env ou variables système
+   - Secrets Docker Compose → isSensitive: true
 
-3. Dépendances (depends_on) :
-   - Créer les services dans l'ordre des dépendances
-   - Utiliser les noms de services LayerOps pour les connexions
-   - Configurer les variables d'environnement avec les URLs des dépendances
+4. Replicas → countMin/countMax :
+   - replicas: 3 → countMin: 3, countMax: 3
+   - Si scaling configuré → ajuster countMin/countMax selon la configuration
+
+5. Dépendances (depends_on) → links :
+   - depends_on: [service1, service2] → links:
+     * [{toServiceId: "service1-id", toServiceProtocol: "tcp", toServicePort: <port>, localExposedPort: <port>}]
+   - Configurer variables d'environnement avec variableHost, variablePort, variableAddress
+
+6. Volumes Docker Compose → volumes LayerOps :
+   - Volume nommé → sharedVolumeNfsUuid ou persistentSharedVolumeNuid
+   - Volume bind → noter pour documentation (gestion différente)
+   - Volume git → {isGit: true, gitRepositorySecretUuid: "...", gitBranchOrCommit: "main"}
+
+7. Command/Entrypoint → dockerConfiguration :
+   - command: ["nginx", "-g", "daemon off;"] → command: ["nginx", "-g", "daemon off;"]
+   - entrypoint: ["/entrypoint.sh"] → command: ["/entrypoint.sh"]
+
+8. Resources (CPU/Memory) :
+   - cpus: "0.5" → cpuLimit: 50 (en pourcentage)
+   - mem_limit: "512m" → memoryLimitMiB: 512
+   - mem_reservation: "256m" → memoryLimitLow: 256
+
+9. Restart policy :
+   - restart: "always" → countMin: 1 (LayerOps gère automatiquement la haute disponibilité)
+   - restart: "on-failure" → noter pour documentation
+
+FORMAT DE SORTIE :
+La configuration générée DOIT être au format YAML conforme au schéma de référence LayerOps.
+Chaque service doit suivre exactement la structure définie dans le schéma officiel.
+
+EXEMPLE DE CONFIGURATION GÉNÉRÉE (format YAML) :
+services:
+  - name: web
+    dockerConfiguration:
+      image: nginx
+      imageVersion: latest
+      isPrivateRegistry: false
+    countMin: 1
+    countMax: 3
+    ports:
+      - listeningPort: 80
+        protocol: tcp
+        healthCheck:
+          healthCheckType: HTTP
+          healthCheckPath: /
+          healthCheckMethod: GET
+          healthCheckEnabled: true
+          healthCheckTimeoutSeconds: 10
+          healthCheckIntervalSeconds: 30
+        loadBalancerRules:
+          - publicPort: 8080
+    environmentVariables:
+      - key: ENV
+        value: production
+        isSensitive: false
+    type: classic
+    cpuLimit: 100
+    memoryLimitMiB: 512
 
 LIMITATIONS ET NOTES :
-- Volumes : LayerOps gère le stockage différemment, documenter les volumes nécessaires
-- Networks personnalisés : LayerOps utilise son propre réseau, documenter les besoins
-- Build context : Les services avec "build" nécessitent une image pré-construite
-- Command/Entrypoint : Noter pour référence mais LayerOps utilise l'image telle quelle
-- Restart policy : LayerOps gère automatiquement la haute disponibilité
-- Healthcheck : Noter pour référence, LayerOps a son propre monitoring
+- Volumes : LayerOps gère le stockage différemment, utiliser sharedVolumeNfsUuid ou persistentSharedVolumeUuid
+- Networks personnalisés : LayerOps utilise son propre réseau, utiliser links pour les connexions entre services
+- Build context : Les services avec "build" nécessitent une image pré-construite et disponible dans un registry
+- Healthcheck : Convertir les healthchecks Docker Compose en configuration healthCheck LayerOps
+- Scaling : Utiliser countMin/countMax et les paramètres de scaling CPU/memory selon le schéma
+- Secrets : Utiliser isSensitive: true pour les variables d'environnement sensibles
 
 VALIDATIONS :
 - Vérifier que le fichier Docker Compose est valide (YAML valide)
@@ -762,52 +890,154 @@ FORMAT DES ARGUMENTS :
 - portMapping: object (optionnel) - Mappings personnalisés de ports : {serviceName: {containerPort: hostPort}}
 - includeResources: array (optionnel) - Types de ressources à inclure : ["deployments", "services", "configmaps", "secrets"]. Défaut: tous
 
+SCHÉMA DE RÉFÉRENCE LAYEROPS :
+La conversion DOIT suivre le schéma officiel LayerOps disponible à :
+https://console.layerops.com/api/v1/services/exampleImportYml?format=text
+
+STRUCTURE DE SERVICE LAYEROPS (conforme au schéma de référence) :
+Voir la structure complète dans le prompt layerops-convert-docker-compose ci-dessus.
+
 CONVERSIONS DÉTAILLÉES :
 
 1. Deployment Kubernetes → Service LayerOps :
-   - spec.template.spec.containers[0].image → image
-   - spec.template.spec.containers[0].ports → ports (containerPort)
-   - spec.template.spec.containers[0].env → env
-   - spec.template.spec.containers[0].envFrom → env (depuis ConfigMap/Secret)
-   - spec.replicas → replicas
+   - spec.template.spec.containers[0].image → dockerConfiguration:
+     * "nginx:1.21" → {image: "nginx", imageVersion: "1.21"}
+     * "myregistry/app:v2.0" → {image: "myregistry/app", imageVersion: "v2.0", isPrivateRegistry: true}
+   - spec.template.spec.containers[0].ports → ports:
+     * containerPort: 8080 → {listeningPort: 8080, protocol: "tcp"}
+     * name: "http" → utiliser pour identifier le port
+   - spec.template.spec.containers[0].command → dockerConfiguration.command
+   - spec.template.spec.containers[0].args → dockerConfiguration.args
+   - spec.template.spec.containers[0].env → environmentVariables:
+     * {name: "KEY", value: "value"} → {key: "KEY", value: "value", isSensitive: false}
+     * {name: "SECRET", valueFrom: {secretKeyRef: ...}} → {key: "SECRET", value: <décodé>, isSensitive: true}
+   - spec.template.spec.containers[0].envFrom → environmentVariables (consolidé)
+   - spec.replicas → countMin et countMax (même valeur si pas de HPA)
    - metadata.name → name (avec préfixe si fourni)
-   - spec.template.spec.containers[0].resources → noter pour documentation (LayerOps gère différemment)
+   - spec.template.spec.containers[0].resources → cpuLimit, memoryLimitMiB:
+     * requests.cpu: "500m" → cpuLimit: 50 (en pourcentage)
+     * limits.cpu: "1000m" → cpuLimitHigh: 100
+     * requests.memory: "512Mi" → memoryLimitMiB: 512
+     * limits.memory: "1Gi" → memoryLimitHigh: 1024
 
-2. Service Kubernetes → Configuration de ports :
-   - spec.type: "ClusterIP" → ports internes uniquement
-   - spec.type: "LoadBalancer" → ports avec hostPort
-   - spec.type: "NodePort" → ports avec hostPort (nodePort)
-   - spec.ports[].port → hostPort
-   - spec.ports[].targetPort → containerPort
+2. Service Kubernetes → Configuration de ports LayerOps :
+   - spec.type: "ClusterIP" → ports sans loadBalancerRules (port interne uniquement)
+   - spec.type: "LoadBalancer" → ports avec loadBalancerRules:
+     * spec.ports[].port → loadBalancerRules[].publicPort
+     * spec.ports[].targetPort → listeningPort
+   - spec.type: "NodePort" → ports avec loadBalancerRules:
+     * spec.ports[].nodePort → loadBalancerRules[].publicPort
+     * spec.ports[].targetPort → listeningPort
+   - spec.ports[].protocol → protocol ("TCP" ou "UDP")
 
-3. ConfigMap → Variables d'environnement :
-   - data → env (toutes les clés/valeurs)
+3. Liveness/Readiness Probes → healthCheck :
+   - livenessProbe.httpGet → healthCheck:
+     * path: "/health" → healthCheckPath: "/health"
+     * port: 8080 → utiliser listeningPort correspondant
+     * scheme: "HTTP" → healthCheckType: "HTTP"
+     * httpHeaders → noter pour documentation
+   - livenessProbe.tcpSocket → healthCheckType: "TCP"
+   - livenessProbe.timeoutSeconds → healthCheckTimeoutSeconds
+   - livenessProbe.periodSeconds → healthCheckIntervalSeconds
+   - livenessProbe.successThreshold → noter pour documentation
+   - livenessProbe.failureThreshold → noter pour documentation
+
+4. ConfigMap → environmentVariables :
+   - data → environmentVariables:
+     * {key: "KEY", value: "value", isSensitive: false}
    - binaryData → noter pour documentation (nécessite traitement spécial)
 
-4. Secret → Variables d'environnement :
-   - data → env (décoder base64)
-   - stringData → env (direct)
-   - Noter que les secrets doivent être gérés sécuritairement
+5. Secret → environmentVariables :
+   - data → environmentVariables (décoder base64):
+     * {key: "KEY", value: <décodé>, isSensitive: true}
+   - stringData → environmentVariables:
+     * {key: "KEY", value: "value", isSensitive: true}
 
-5. Variables d'environnement consolidées :
+6. Variables d'environnement consolidées :
    - env du Deployment
    + envFrom ConfigMaps
    + envFrom Secrets
-   = env final pour LayerOps
+   = environmentVariables final pour LayerOps
+
+7. HPA (HorizontalPodAutoscaler) → Scaling LayerOps :
+   - minReplicas → countMin
+   - maxReplicas → countMax
+   - metrics → cpuLimitHigh, cpuLimitLow, memoryLimitHigh, memoryLimitLow
+   - behavior → cooldownMinutes, cpuDurationMinutes, memoryDurationMinutes
+
+8. InitContainers → sideTasks :
+   - initContainers → sideTasks:
+     * [{dockerConfiguration: {...}, type: "preStart", cpuLimit: 100, memoryLimitMiB: 128}]
+
+9. PersistentVolumeClaims → volumes :
+   - PVC → volumes avec persistentSharedVolumeUuid ou sharedVolumeNfsUuid
+   - Noter le nom du PVC pour référence
+
+10. Ingress → loadBalancerRules.customDomains :
+    - spec.rules[].host → customDomains
+    - spec.tls[].hosts → customDomains (avec HTTPS)
+
+FORMAT DE SORTIE :
+La configuration générée DOIT être au format YAML conforme au schéma de référence LayerOps.
+Chaque service doit suivre exactement la structure définie dans le schéma officiel.
+
+EXEMPLE DE CONFIGURATION GÉNÉRÉE (format YAML) :
+services:
+  - name: api
+    dockerConfiguration:
+      image: myregistry/api
+      imageVersion: v1.0.0
+      isPrivateRegistry: true
+      secretUuid: "secret-uuid-here"
+    countMin: 2
+    countMax: 10
+    ports:
+      - listeningPort: 8080
+        protocol: tcp
+        healthCheck:
+          healthCheckType: HTTP
+          healthCheckPath: /health
+          healthCheckMethod: GET
+          healthCheckEnabled: true
+          healthCheckTimeoutSeconds: 5
+          healthCheckIntervalSeconds: 30
+        loadBalancerRules:
+          - publicPort: 80
+            customDomains:
+              - api.example.com
+    environmentVariables:
+      - key: ENV
+        value: production
+        isSensitive: false
+      - key: DB_PASSWORD
+        value: "decoded-secret"
+        isSensitive: true
+    type: classic
+    cpuLimit: 100
+    cpuLimitHigh: 80
+    cpuLimitLow: 50
+    cpuDurationMinutes: 15
+    cpuWindowMinutes: 5
+    memoryLimitMiB: 1024
+    memoryLimitHigh: 80
+    memoryLimitLow: 50
+    memoryDurationMinutes: 15
+    memoryWindowMinutes: 5
+    cooldownMinutes: 5
 
 LIMITATIONS ET NOTES :
-- PersistentVolumeClaims : LayerOps gère le stockage différemment, documenter les besoins
-- Ingress : LayerOps a son propre système de routage, documenter les besoins
-- StatefulSets : Convertir en Services LayerOps mais noter les différences
-- DaemonSets : Noter pour documentation (non directement supporté)
-- Jobs/CronJobs : Noter pour documentation (nécessite adaptation)
-- ServiceAccounts : Noter pour documentation (gestion différente)
+- PersistentVolumeClaims : Convertir en volumes LayerOps avec persistentSharedVolumeUuid ou sharedVolumeNfsUuid
+- Ingress : Convertir en loadBalancerRules avec customDomains
+- StatefulSets : Convertir en Services LayerOps avec countMin=countMax=1 et noter les différences
+- DaemonSets : Noter pour documentation (non directement supporté, utiliser constraints.tags)
+- Jobs/CronJobs : Utiliser cronExpression et cronAllowOverlap dans le schéma LayerOps
+- ServiceAccounts : Noter pour documentation (gestion différente via LayerOps RBAC)
 - RBAC (Roles, RoleBindings) : Géré via LayerOps RBAC, documenter les besoins
-- NetworkPolicies : Noter pour documentation (LayerOps gère différemment)
-- HPA (HorizontalPodAutoscaler) : LayerOps a son propre autoscaling
-- Resources (CPU/memory limits) : Noter pour documentation (LayerOps gère différemment)
-- InitContainers : Noter pour documentation (nécessite adaptation)
-- Sidecars : Noter pour documentation (nécessite adaptation)
+- NetworkPolicies : Noter pour documentation (LayerOps gère différemment via links)
+- HPA (HorizontalPodAutoscaler) : Convertir en paramètres de scaling LayerOps (cpuLimitHigh/Low, memoryLimitHigh/Low, countMin/Max)
+- Resources (CPU/memory limits) : Convertir en cpuLimit, memoryLimitMiB et paramètres de scaling
+- InitContainers : Convertir en sideTasks avec type: "preStart"
+- Sidecars : Noter pour documentation (nécessite adaptation, possiblement via sideTasks)
 
 VALIDATIONS :
 - Vérifier que le chart Helm est valide (structure correcte)
