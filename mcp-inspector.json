@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "layerops": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "LAYEROPS_API_KEY_ID": "${LAYEROPS_API_KEY_ID}",
+        "LAYEROPS_API_KEY_SECRET": "${LAYEROPS_API_KEY_SECRET}",
+        "LAYEROPS_API_BASE_URL": "${LAYEROPS_API_BASE_URL:-https://api.layerops.io}"
+      }
+    }
+  }
+}
+
