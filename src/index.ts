@@ -4,6 +4,44 @@
  * Serveur MCP pour LayerOps
  */
 
+// Vérification de la version de Node.js et de la disponibilité de fetch()
+(function checkNodeVersionAndFetch() {
+  const nodeVersion = process.version;
+  const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0], 10);
+  
+  // Vérifier la version de Node.js (fetch() est disponible nativement depuis Node.js 18)
+  if (majorVersion < 18) {
+    console.error('❌ ERREUR: Version de Node.js incompatible');
+    console.error('');
+    console.error(`   Version actuelle: ${nodeVersion}`);
+    console.error('   Version requise: >= 18.0.0');
+    console.error('');
+    console.error('   La fonction fetch() est disponible nativement depuis Node.js 18.');
+    console.error('   Veuillez mettre à jour Node.js vers la version 18 ou supérieure.');
+    console.error('');
+    console.error('   Pour mettre à jour Node.js:');
+    console.error('   - Utilisez nvm: nvm install 18 && nvm use 18');
+    console.error('   - Ou téléchargez depuis: https://nodejs.org/');
+    console.error('');
+    process.exit(1);
+  }
+  
+  // Vérifier que fetch() est disponible (double vérification)
+  if (typeof fetch === 'undefined') {
+    console.error('❌ ERREUR: La fonction fetch() n\'est pas disponible');
+    console.error('');
+    console.error(`   Version de Node.js: ${nodeVersion}`);
+    console.error('   La fonction fetch() devrait être disponible depuis Node.js 18.');
+    console.error('');
+    console.error('   Solutions possibles:');
+    console.error('   1. Mettez à jour Node.js vers la version 18 ou supérieure');
+    console.error('   2. Vérifiez que vous utilisez la bonne version avec: node --version');
+    console.error('   3. Si vous utilisez nvm, assurez-vous d\'avoir activé la bonne version');
+    console.error('');
+    process.exit(1);
+  }
+})();
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
