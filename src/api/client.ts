@@ -18,7 +18,6 @@ export class LayerOpsApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
-    // S'assurer que l'endpoint commence par /v1/ selon la définition Swagger
     const normalizedEndpoint = endpoint.startsWith('/v1/') 
       ? endpoint 
       : endpoint.startsWith('/') 
@@ -60,15 +59,66 @@ export class LayerOpsApiClient {
     }
   }
 
-  // Workspaces (appelés "projects" dans l'interface mais "workspaces" dans l'API selon Swagger)
+  /**
+   * Liste tous les workspaces (projets)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/workspaces
+   */
   async getProjects(): Promise<ApiResponse> {
     return this.request('/workspaces');
   }
 
+  /**
+   * Récupère les détails d'un workspace (projet) spécifique
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @note GET /v1/workspaces/{workspaceUuid} n'existe pas dans Swagger. Utiliser listWorkspaces et filtrer par UUID.
+   */
   async getProject(projectId: string): Promise<ApiResponse> {
-    return this.request(`/workspaces/${projectId}`);
+    // GET direct sur /workspaces/{workspaceUuid} n'existe pas dans Swagger
+    // Alternative: lister tous les workspaces et filtrer
+    const allWorkspaces = await this.getProjects();
+    if (allWorkspaces.error) {
+      return allWorkspaces;
+    }
+    if (allWorkspaces.data && Array.isArray(allWorkspaces.data)) {
+      const workspace = allWorkspaces.data.find((w: any) => w.uuid === projectId || w.id === projectId);
+      if (workspace) {
+        return { data: workspace };
+      }
+      return {
+        error: {
+          message: `Workspace ${projectId} not found`,
+          code: 'NOT_FOUND',
+        },
+      };
+    }
+    return {
+      error: {
+        message: 'Unable to retrieve workspace details. GET /v1/workspaces/{workspaceUuid} is not available in Swagger.',
+        code: 'NOT_IMPLEMENTED',
+      },
+    };
   }
 
+  /**
+   * Supprime un workspace (projet)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method DELETE
+   * @url /v1/workspaces/{workspaceUuid}
+   */
+  async deleteProject(projectId: string): Promise<ApiResponse> {
+    return this.request(`/workspaces/${projectId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Crée un nouveau workspace (projet)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method POST
+   * @url /v1/workspaces
+   */
   async createProject(data: { name: string }): Promise<ApiResponse> {
     return this.request('/workspaces', {
       method: 'POST',
@@ -76,172 +126,161 @@ export class LayerOpsApiClient {
     });
   }
 
-  async deleteProject(projectId: string): Promise<ApiResponse> {
-    return this.request(`/workspaces/${projectId}`, {
-      method: 'DELETE',
-    });
+  /**
+   * Liste les environnements d'un workspace
+   * @param projectId - UUID du workspace (requis)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/workspaces/{workspaceUuid}/environments
+   */
+  async getEnvironments(projectId: string): Promise<ApiResponse> {
+    if (!projectId) {
+      return {
+        error: {
+          message: 'projectId (workspaceUuid) is required to list environments',
+          code: 'VALIDATION_ERROR',
+        },
+      };
+    }
+    return this.request(`/workspaces/${projectId}/environments`);
   }
 
-  // Environments
-  async getEnvironments(projectId?: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/workspaces/{workspaceUuid}/environments
-    const endpoint = projectId ? `/workspaces/${projectId}/environments` : '/environments';
-    return this.request(endpoint);
-  }
-
-  async getEnvironment(environmentId: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/environments/{environmentUuid}
-    return this.request(`/environments/${environmentId}`);
-  }
-
+  /**
+   * Crée un nouvel environnement
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method POST
+   * @url /v1/workspaces/{workspaceUuid}/environments
+   */
   async createEnvironment(data: { name: string; projectId: string }): Promise<ApiResponse> {
-    // Selon Swagger: POST /v1/workspaces/{workspaceUuid}/environments
     return this.request(`/workspaces/${data.projectId}/environments`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
+  /**
+   * Récupère les détails d'un environnement spécifique
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/environments/{environmentUuid}
+   */
+  async getEnvironment(environmentId: string): Promise<ApiResponse> {
+    return this.request(`/environments/${environmentId}`);
+  }
+
+  /**
+   * Supprime un environnement
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method DELETE
+   * @url /v1/environments/{environmentUuid}
+   */
   async deleteEnvironment(environmentId: string): Promise<ApiResponse> {
-    // Selon Swagger: DELETE /v1/environments/{environmentUuid}
     return this.request(`/environments/${environmentId}`, {
       method: 'DELETE',
     });
   }
 
-  // Instances
-  // Note: Selon Swagger, les instances sont gérées via les instance pools
-  // Il n'y a pas d'endpoint direct /instances dans Swagger
-  // Ces méthodes sont conservées pour compatibilité mais peuvent ne pas fonctionner
-  async getInstances(environmentId?: string): Promise<ApiResponse> {
-    // Pas d'endpoint direct dans Swagger - utiliser les instance pools
-    const endpoint = environmentId ? `/environments/${environmentId}/instancePools` : '/instancePools';
-    return this.request(endpoint);
-  }
-
-  async getInstance(instanceId: string): Promise<ApiResponse> {
-    // Pas d'endpoint direct dans Swagger - utiliser les instance pools
-    return this.request(`/instancePools/${instanceId}`);
-  }
-
-  async createInstance(data: any): Promise<ApiResponse> {
-    // Selon Swagger: POST /v1/environments/{environmentUuid}/instancePools
-    if (!data.environmentId) {
+  /**
+   * Liste les instance pools d'un environnement
+   * @param environmentId - UUID de l'environnement (requis)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/environments/{environmentUuid}/instancePools
+   */
+  async getInstancePools(environmentId: string): Promise<ApiResponse> {
+    if (!environmentId) {
       return {
         error: {
-          message: 'environmentId is required to create an instance pool',
+          message: 'environmentId is required to list instance pools',
           code: 'VALIDATION_ERROR',
         },
       };
     }
-    return this.request(`/environments/${data.environmentId}/instancePools`, {
+    return this.request(`/environments/${environmentId}/instancePools`);
+  }
+
+  /**
+   * Crée un nouveau pool d'instances
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method POST
+   * @url /v1/providers/{providerUuid}/instancePools
+   */
+  async createInstancePool(data: { providerUuid: string; [key: string]: any }): Promise<ApiResponse> {
+    if (!data.providerUuid) {
+      return {
+        error: {
+          message: 'providerUuid is required to create an instance pool',
+          code: 'VALIDATION_ERROR',
+        },
+      };
+    }
+    return this.request(`/providers/${data.providerUuid}/instancePools`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateInstance(instanceId: string, data: any): Promise<ApiResponse> {
-    // Selon Swagger: PATCH /v1/instancePools/{instancePoolUuid}
-    return this.request(`/instancePools/${instanceId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteInstance(instanceId: string): Promise<ApiResponse> {
-    // Selon Swagger: DELETE /v1/instancePools/{instancePoolUuid}
-    return this.request(`/instancePools/${instanceId}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async startInstance(instanceId: string): Promise<ApiResponse> {
-    // Pas d'endpoint direct dans Swagger - peut-être via instance pools
-    return {
-      error: {
-        message: 'Start instance endpoint not found in Swagger. Use instance pools instead.',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
-
-  async stopInstance(instanceId: string): Promise<ApiResponse> {
-    // Pas d'endpoint direct dans Swagger - peut-être via instance pools
-    return {
-      error: {
-        message: 'Stop instance endpoint not found in Swagger. Use instance pools instead.',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
-
-  async restartInstance(instanceId: string): Promise<ApiResponse> {
-    // Pas d'endpoint direct dans Swagger - peut-être via instance pools
-    return {
-      error: {
-        message: 'Restart instance endpoint not found in Swagger. Use instance pools instead.',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
-
-  // Instance Pools
-  async getInstancePools(environmentId?: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/environments/{environmentUuid}/instancePools
-    const endpoint = environmentId ? `/environments/${environmentId}/instancePools` : '/instancePools';
-    return this.request(endpoint);
-  }
-
+  /**
+   * Récupère les détails d'un pool d'instances spécifique
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/instancePools/{instancePoolUuid}
+   */
   async getInstancePool(poolId: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/instancePools/{instancePoolUuid}
     return this.request(`/instancePools/${poolId}`);
   }
 
-  async createInstancePool(data: any): Promise<ApiResponse> {
-    // Selon Swagger: POST /v1/environments/{environmentUuid}/instancePools
-    if (!data.environmentId) {
-      return {
-        error: {
-          message: 'environmentId is required to create an instance pool',
-          code: 'VALIDATION_ERROR',
-        },
-      };
-    }
-    return this.request(`/environments/${data.environmentId}/instancePools`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
+  /**
+   * Met à jour un pool d'instances
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method PUT
+   * @url /v1/instancePools/{instancePoolUuid}
+   */
   async updateInstancePool(poolId: string, data: any): Promise<ApiResponse> {
-    // Selon Swagger: PATCH /v1/instancePools/{instancePoolUuid}
     return this.request(`/instancePools/${poolId}`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
+  /**
+   * Supprime un pool d'instances
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method DELETE
+   * @url /v1/instancePools/{instancePoolUuid}
+   */
   async deleteInstancePool(poolId: string): Promise<ApiResponse> {
-    // Selon Swagger: DELETE /v1/instancePools/{instancePoolUuid}
     return this.request(`/instancePools/${poolId}`, {
       method: 'DELETE',
     });
   }
 
-  // Services
-  async getServices(environmentId?: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/environments/{environmentUuid}/services
-    const endpoint = environmentId ? `/environments/${environmentId}/services` : '/services';
-    return this.request(endpoint);
+  /**
+   * Liste les services d'un environnement
+   * @param environmentId - UUID de l'environnement (requis)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/environments/{environmentUuid}/services
+   */
+  async getServices(environmentId: string): Promise<ApiResponse> {
+    if (!environmentId) {
+      return {
+        error: {
+          message: 'environmentId is required to list services',
+          code: 'VALIDATION_ERROR',
+        },
+      };
+    }
+    return this.request(`/environments/${environmentId}/services`);
   }
 
-  async getService(serviceId: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/services/{serviceUuid}
-    return this.request(`/services/${serviceId}`);
-  }
-
-  async createService(data: any): Promise<ApiResponse> {
-    // Selon Swagger: POST /v1/environments/{environmentUuid}/services
+  /**
+   * Crée un nouveau service
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method POST
+   * @url /v1/environments/{environmentUuid}/services
+   */
+  async createService(data: { environmentId: string; [key: string]: any }): Promise<ApiResponse> {
     if (!data.environmentId) {
       return {
         error: {
@@ -256,89 +295,116 @@ export class LayerOpsApiClient {
     });
   }
 
+  /**
+   * Récupère les détails d'un service spécifique
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/services/{serviceUuid}
+   */
+  async getService(serviceId: string): Promise<ApiResponse> {
+    return this.request(`/services/${serviceId}`);
+  }
+
+  /**
+   * Met à jour un service
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method PUT
+   * @url /v1/services/{serviceUuid}
+   */
   async updateService(serviceId: string, data: any): Promise<ApiResponse> {
-    // Selon Swagger: PATCH /v1/services/{serviceUuid}
     return this.request(`/services/${serviceId}`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
+  /**
+   * Met à jour le nombre de répliques d'un service (scaling)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method PUT
+   * @url /v1/services/{serviceUuid}
+   */
+  async scaleService(serviceId: string, countMin: number, countMax: number): Promise<ApiResponse> {
+    return this.updateService(serviceId, { countMin, countMax });
+  }
+
+  /**
+   * Supprime un service
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method DELETE
+   * @url /v1/services/{serviceUuid}
+   */
   async deleteService(serviceId: string): Promise<ApiResponse> {
-    // Selon Swagger: DELETE /v1/services/{serviceUuid}
     return this.request(`/services/${serviceId}`, {
       method: 'DELETE',
     });
   }
 
-  async scaleService(serviceId: string, replicas: number): Promise<ApiResponse> {
-    // Selon Swagger: PATCH /v1/services/{serviceUuid} avec countMin/countMax
-    // Pas d'endpoint /scale direct - utiliser updateService avec countMin/countMax
-    return this.updateService(serviceId, { countMin: replicas, countMax: replicas });
-  }
-
-  // Events
-  async getEvents(resourceType?: string, resourceId?: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/environments/{environmentUuid}/events
-    // ou GET /v1/services/{serviceUuid}/events
-    // ou GET /v1/instancePools/{instancePoolUuid}/events
-    if (resourceType === 'environment' && resourceId) {
+  /**
+   * Liste les événements d'une ressource
+   * @param resourceType - Type de ressource: 'environment', 'service', ou 'instancePool'
+   * @param resourceId - UUID de la ressource
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/environments/{environmentUuid}/events | /v1/services/{serviceUuid}/events | /v1/instancePools/{instancePoolUuid}/events
+   */
+  async getEvents(resourceType: 'environment' | 'service' | 'instancePool', resourceId: string): Promise<ApiResponse> {
+    if (resourceType === 'environment') {
       return this.request(`/environments/${resourceId}/events`);
     }
-    if (resourceType === 'service' && resourceId) {
+    if (resourceType === 'service') {
       return this.request(`/services/${resourceId}/events`);
     }
-    if (resourceType === 'instancePool' && resourceId) {
+    if (resourceType === 'instancePool') {
       return this.request(`/instancePools/${resourceId}/events`);
     }
-    // Si aucun type spécifique, retourner une erreur car il faut un contexte
     return {
       error: {
-        message: 'resourceType and resourceId are required. Use environment, service, or instancePool.',
+        message: 'resourceType must be environment, service, or instancePool',
         code: 'VALIDATION_ERROR',
       },
     };
   }
 
-  async getEvent(eventId: string): Promise<ApiResponse> {
-    // Pas d'endpoint direct /events/{eventId} dans Swagger
-    // Les événements sont récupérés via les ressources parentes
-    return {
-      error: {
-        message: 'Event endpoint not found in Swagger. Use getEvents with resourceType and resourceId.',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
+  /**
+   * Récupère un événement spécifique
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/events/{eventUuid} (si disponible) ou via les endpoints de ressource
+   */
+  async getEvent(resourceType: 'environment' | 'service' | 'instancePool', resourceId: string, eventId?: string): Promise<ApiResponse> {
+    // Si eventId est fourni, essayer de récupérer l'événement spécifique
+    // Sinon, lister tous les événements et filtrer
+    const eventsResponse = await this.getEvents(resourceType, resourceId);
+    if (eventsResponse.error) {
+      return eventsResponse;
+    }
+    if (eventId && eventsResponse.data) {
+      const events = Array.isArray(eventsResponse.data) ? eventsResponse.data : [];
+      const event = events.find((e: any) => e.id === eventId || e.uuid === eventId);
+      if (event) {
+        return { data: event };
+      }
+      return {
+        error: {
+          message: `Event ${eventId} not found`,
+          code: 'NOT_FOUND',
+        },
+      };
+    }
+    return eventsResponse;
   }
 
-  // Monitoring
-  async getMonitoringData(instanceId: string, startTime?: string, endTime?: string): Promise<ApiResponse> {
-    // Selon Swagger: Les données de monitoring sont sous /v1/environments/{environmentUuid}/monitoring/*
-    // Pas d'endpoint direct /monitoring/instances/{instanceId}
-    // Utiliser les instance pools ou les services pour le monitoring
-    return {
-      error: {
-        message: 'Monitoring endpoint for instances not found in Swagger. Use environment or service monitoring instead.',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
-
-  async getServiceMonitoring(serviceId: string, startTime?: string, endTime?: string): Promise<ApiResponse> {
-    // Selon Swagger: Les données de monitoring sont sous /v1/environments/{environmentUuid}/monitoring/*
-    // Pas d'endpoint direct /monitoring/services/{serviceId}
-    // Utiliser l'environnement parent pour le monitoring
-    return {
-      error: {
-        message: 'Monitoring endpoint for services not found in Swagger. Use environment monitoring instead.',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
-
-  // Analytics
-  async getAnalytics(environmentId?: string, startTime?: string, endTime?: string): Promise<ApiResponse> {
-    // Selon Swagger: GET /v1/environments/{environmentUuid}/analyze
+  /**
+   * Récupère les analytics d'un environnement
+   * @param environmentId - UUID de l'environnement (requis)
+   * @param startTime - Date de début (ISO 8601, optionnel)
+   * @param endTime - Date de fin (ISO 8601, optionnel)
+   * @see {@link https://api.layerops.com/api | Documentation Swagger LayerOps}
+   * @method GET
+   * @url /v1/environments/{environmentUuid}/analyze
+   */
+  async getAnalytics(environmentId: string, startTime?: string, endTime?: string): Promise<ApiResponse> {
     if (!environmentId) {
       return {
         error: {
@@ -355,37 +421,4 @@ export class LayerOpsApiClient {
     return this.request(endpoint);
   }
 
-  // RBAC
-  // Note: Les endpoints RBAC ne sont pas présents dans le Swagger analysé
-  // Ces méthodes sont conservées pour compatibilité mais peuvent ne pas fonctionner
-  async getRoles(): Promise<ApiResponse> {
-    // Pas d'endpoint /rbac/roles dans Swagger
-    return {
-      error: {
-        message: 'RBAC roles endpoint not found in Swagger',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
-
-  async getRole(roleId: string): Promise<ApiResponse> {
-    // Pas d'endpoint /rbac/roles/{roleId} dans Swagger
-    return {
-      error: {
-        message: 'RBAC role endpoint not found in Swagger',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
-
-  async assignRole(userId: string, roleId: string, resourceType: string, resourceId: string): Promise<ApiResponse> {
-    // Pas d'endpoint /rbac/assignments dans Swagger
-    return {
-      error: {
-        message: 'RBAC assignments endpoint not found in Swagger',
-        code: 'NOT_IMPLEMENTED',
-      },
-    };
-  }
 }
-

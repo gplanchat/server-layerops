@@ -539,6 +539,124 @@ data:
 - Plan de déploiement si applicable
 - Références au schéma de référence LayerOps
 
+### 5. Déploiement depuis la marketplace LayerOps
+
+**Prompt**: `layerops-deploy-marketplace`
+
+Déploie une application depuis la marketplace LayerOps avec un processus guidé de questions/réponses pour minimiser les connaissances techniques requises.
+
+**⚠️ SÉCURITÉ DES SECRETS** :
+- **JAMAIS** inclure de mots de passe, clés API, tokens ou secrets dans l'historique du chat
+- Utiliser **UNIQUEMENT** des placeholders : `{{SECRET_NAME}}` ou `$SECRET_NAME`
+- Les secrets doivent être fournis via variables d'environnement, fichiers séparés, ou systèmes de gestion de secrets
+- Si un secret est accidentellement inclus, **ALERTER immédiatement** l'utilisateur pour régénération
+
+**Processus** :
+1. **Découverte** : Présenter les catégories d'applications disponibles (bases de données, serveurs web, monitoring, etc.)
+2. **Sélection** : L'utilisateur choisit une catégorie puis une application spécifique
+3. **Configuration** : L'agent pose des questions essentielles :
+   - Nom du service
+   - Environnement de déploiement
+   - Configuration des ressources (CPU, mémoire)
+   - Ports à exposer
+   - Variables d'environnement
+   - Secrets requis (via placeholders sécurisés)
+4. **Déploiement** : Création du projet/environnement si nécessaire et déploiement de l'application
+5. **Documentation** : Résumé avec instructions de configuration des secrets
+
+**Applications supportées** :
+- Bases de données : PostgreSQL, MySQL, MongoDB, Redis, etc.
+- Serveurs web : Nginx, Apache, Caddy, etc.
+- Monitoring : Prometheus, Grafana, etc.
+- Développement : GitLab, Jenkins, etc.
+- Applications métier : WordPress, Nextcloud, etc.
+
+**Arguments**:
+- `applicationCategory` (optionnel) : Catégorie d'application (ex: "database", "web-server")
+- `applicationName` (optionnel) : Nom de l'application marketplace (ex: "postgresql", "nginx")
+- `projectName` (requis) : Nom du projet LayerOps
+- `environmentName` (requis) : Nom de l'environnement
+- `serviceName` (optionnel) : Nom du service à créer
+- `interactiveMode` (optionnel) : Mode interactif avec questions/réponses (défaut: true)
+- `skipQuestions` (optionnel) : Passer directement au déploiement si toutes les infos sont fournies
+- `configuration` (optionnel) : Configuration pré-remplie pour éviter les questions
+
+**Exemple d'utilisation**:
+```
+Déploie PostgreSQL depuis la marketplace dans le projet "MonApp", environnement "production"
+```
+
+L'agent va poser des questions guidées et utiliser des placeholders pour les secrets :
+- Mot de passe : `{{POSTGRES_PASSWORD}}`
+- Instructions fournies pour configurer le secret via variable d'environnement ou fichier .env.local
+
+**Références** :
+- Documentation : `FEATURE015-deploiement-marketplace.md`
+- Ressource MCP : `layerops://docs/marketplace`
+
+### 6. Déploiement depuis une définition (LayerOps, Docker Compose, Helm, Kubernetes)
+
+**Prompt**: `layerops-deploy-from-definition`
+
+Déploie une application sur LayerOps à partir d'une définition existante (LayerOps YAML, Docker Compose, Helm chart, ou Kubernetes YAML). Utilise les prompts de conversion existants puis déploie automatiquement le résultat.
+
+**⚠️ SÉCURITÉ DES SECRETS** :
+- **JAMAIS** inclure de mots de passe, clés API, tokens ou secrets dans l'historique du chat
+- Utiliser **UNIQUEMENT** des placeholders : `{{SECRET_NAME}}` ou `$SECRET_NAME`
+- Détection automatique et remplacement des secrets pendant la conversion
+- Si un secret est détecté dans le fichier source, **ALERTER immédiatement** et remplacer par placeholder
+
+**Formats supportés** :
+1. **LayerOps YAML** : Format natif avec structure `services: [...]` (déploiement direct)
+2. **Docker Compose** : Fichier `docker-compose.yml` standard (conversion via `layerops-convert-docker-compose`)
+3. **Helm Chart** : Chart Helm complet (conversion via `layerops-convert-helm`)
+4. **Kubernetes YAML** : Ressources Kubernetes (conversion via `layerops-convert-kubernetes`)
+
+**Processus** :
+1. **Identification** : Analyse automatique du format du fichier
+2. **Conversion** : Utilisation du prompt de conversion approprié si nécessaire
+3. **Sécurisation** : Détection et remplacement des secrets par des placeholders
+4. **Validation** : Validation de la spécification LayerOps générée
+5. **Déploiement** : Déploiement séquentiel des services (en respectant les dépendances)
+6. **Documentation** : Résumé avec instructions de configuration des secrets
+
+**Arguments**:
+- `definitionFile` (requis) : Contenu du fichier ou chemin vers le fichier
+- `definitionFormat` (optionnel) : Format explicite ("layerops", "docker-compose", "helm", "kubernetes")
+- `projectName` (requis) : Nom du projet LayerOps
+- `environmentName` (requis) : Nom de l'environnement
+- `environmentId` (optionnel) : ID de l'environnement existant
+- `autoDeploy` (optionnel) : Déployer automatiquement (défaut: true)
+- `servicePrefix` (optionnel) : Préfixe pour les noms de services
+- `secretPlaceholders` (optionnel) : Mapping des secrets vers placeholders personnalisés
+- `registrySecrets` (optionnel) : Mapping des registries privés vers secretUuid LayerOps
+
+**Exemple d'utilisation**:
+
+**Docker Compose** :
+```
+Déploie le fichier docker-compose.yml dans le projet "MonApp", environnement "production"
+```
+
+**Helm Chart** :
+```
+Déploie le chart Helm dans ./my-chart dans le projet "MonApp", environnement "staging"
+```
+
+**Kubernetes** :
+```
+Déploie les fichiers Kubernetes (deployment.yaml, service.yaml) dans le projet "MonApp", environnement "production"
+```
+
+**Gestion des secrets** :
+- Les secrets détectés dans le fichier source sont automatiquement remplacés par des placeholders
+- Liste documentée de tous les placeholders créés
+- Instructions fournies pour configurer les secrets réels via variables d'environnement ou fichiers séparés
+
+**Références** :
+- Documentation : `FEATURE016-deploiement-depuis-definition.md`
+- Prompts de conversion : `layerops-convert-docker-compose`, `layerops-convert-helm`, `layerops-convert-kubernetes`
+
 ## Bonnes pratiques
 
 1. **Toujours vérifier avant de supprimer** : Utilisez `layerops_get_*` pour vérifier les ressources avant suppression
@@ -548,4 +666,7 @@ data:
 5. **Migration Docker Compose** : Utilisez `layerops-convert-docker-compose` pour migrer vos applications existantes
 6. **Migration Helm** : Utilisez `layerops-convert-helm` pour migrer vos charts Helm vers LayerOps
 7. **Migration Kubernetes** : Utilisez `layerops-convert-kubernetes` pour migrer vos ressources Kubernetes (YAML) vers LayerOps
+8. **Déploiement marketplace** : Utilisez `layerops-deploy-marketplace` pour déployer des applications pré-configurées avec un minimum de connaissances techniques
+9. **Déploiement depuis définition** : Utilisez `layerops-deploy-from-definition` pour déployer automatiquement depuis Docker Compose, Helm, Kubernetes ou LayerOps YAML
+10. **Sécurité des secrets** : **JAMAIS** inclure de secrets dans l'historique du chat. Utilisez toujours des placeholders `{{SECRET_NAME}}` et configurez les valeurs réelles via variables d'environnement ou fichiers séparés
 

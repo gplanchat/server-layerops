@@ -1478,5 +1478,392 @@ EXEMPLE DE SÉQUENCE :
       },
     ],
   },
+  {
+    name: 'layerops-deploy-marketplace',
+    description: `Déploie une application depuis la marketplace LayerOps avec un processus guidé de questions/réponses pour minimiser les connaissances techniques requises.
+
+⚠️ SÉCURITÉ DES SECRETS - RÈGLE INVARIABLE :
+- JAMAIS inclure de mots de passe, clés API, tokens ou secrets dans les messages du chat
+- Utiliser UNIQUEMENT des placeholders : {{SECRET_NAME}} ou $SECRET_NAME
+- Les secrets doivent être fournis via :
+  * Variables d'environnement (recommandé)
+  * Fichier séparé non versionné (.env.local, secrets.json, etc.)
+  * Système de gestion de secrets externe
+- Si un secret est accidentellement inclus dans un message, ALERTER immédiatement l'utilisateur :
+  "⚠️ ALERTE SÉCURITÉ : Un secret a été compromis dans l'historique. Vous DEVEZ régénérer immédiatement : [nom du secret]"
+- Ne jamais stocker, logger ou transmettre les valeurs réelles des secrets
+
+INSTRUCTIONS DÉTAILLÉES :
+
+Phase 1 : Découverte et sélection
+1. Consulter la documentation LayerOps marketplace (ressource layerops://docs/marketplace)
+2. Présenter à l'utilisateur une liste de catégories d'applications disponibles :
+   - Bases de données (PostgreSQL, MySQL, MongoDB, Redis, etc.)
+   - Serveurs web (Nginx, Apache, Caddy, etc.)
+   - Outils de monitoring (Prometheus, Grafana, etc.)
+   - Outils de développement (GitLab, Jenkins, etc.)
+   - Applications métier (WordPress, Nextcloud, etc.)
+3. Demander à l'utilisateur de sélectionner une catégorie
+4. Présenter les applications disponibles dans cette catégorie avec :
+   - Nom de l'application
+   - Description courte
+   - Cas d'usage typiques
+   - Configuration minimale requise
+5. Demander à l'utilisateur de sélectionner l'application souhaitée
+
+Phase 2 : Questions de configuration
+6. Pour l'application sélectionnée, générer une liste de questions essentielles :
+   - Nom du service (suggestion basée sur l'application)
+   - Environnement de déploiement (existant ou nouveau)
+   - Configuration des ressources (CPU, mémoire) si applicable
+   - Ports à exposer (avec suggestions basées sur l'application)
+   - Variables d'environnement nécessaires (avec descriptions)
+   - Secrets requis (utiliser des placeholders {{SECRET_NAME}})
+7. Présenter les questions une par une ou par groupe logique
+8. Pour chaque question :
+   - Fournir une description claire de ce qui est demandé
+   - Proposer des valeurs par défaut si approprié
+   - Expliquer l'impact de chaque choix
+   - Valider les réponses avant de continuer
+
+Phase 3 : Gestion des secrets
+9. Identifier tous les secrets requis pour l'application :
+   - Mots de passe de base de données
+   - Clés API
+   - Tokens d'authentification
+   - Certificats
+   - Clés de chiffrement
+10. Pour chaque secret :
+    - Demander le nom du placeholder (ex: {{DB_PASSWORD}}, {{API_KEY}})
+    - Expliquer comment l'utilisateur doit fournir la valeur réelle :
+      * Via variable d'environnement : export DB_PASSWORD="valeur"
+      * Via fichier .env.local (non versionné)
+      * Via système de secrets externe
+    - NE JAMAIS demander la valeur réelle dans le chat
+    - Documenter le placeholder dans la configuration finale
+
+Phase 4 : Validation et déploiement
+11. Récupérer ou créer le projet LayerOps :
+    - Si projectName fourni : vérifier existence avec layerops_list_projects
+    - Si n'existe pas : créer avec layerops_create_project
+    - Récupérer l'ID du projet
+12. Récupérer ou créer l'environnement :
+    - Si environmentId fourni : vérifier existence avec layerops_get_environment
+    - Si environmentName fourni : créer avec layerops_create_environment
+    - Récupérer l'ID de l'environnement
+13. Préparer la configuration du service :
+    - name : nom fourni par l'utilisateur
+    - image : image de l'application marketplace (identifier depuis la doc)
+    - environmentId : ID récupéré
+    - ports : configuration des ports selon les réponses
+    - env : variables d'environnement avec placeholders pour secrets
+    - replicas : nombre de répliques (défaut: 1)
+14. Appeler layerops_create_service avec la configuration
+15. Attendre la confirmation de création
+16. Vérifier l'état du service avec layerops_get_service
+17. Fournir les informations de connexion (sans secrets) :
+    - URL d'accès si applicable
+    - Ports exposés
+    - Instructions pour configurer les secrets réels
+    - Documentation de l'application
+
+Phase 5 : Documentation et instructions finales
+18. Générer un résumé du déploiement :
+    - Nom du service et ID
+    - Configuration appliquée
+    - Placeholders de secrets à remplacer
+    - Instructions pour configurer les secrets réels
+    - Liens vers la documentation de l'application
+19. Fournir des instructions de maintenance :
+    - Comment mettre à jour l'application
+    - Comment surveiller les logs
+    - Comment sauvegarder les données si applicable
+
+FORMAT DES ARGUMENTS :
+- applicationCategory: string (optionnel) - Catégorie d'application (ex: "database", "web-server", "monitoring")
+- applicationName: string (optionnel) - Nom de l'application marketplace (ex: "postgresql", "nginx", "wordpress")
+- projectName: string (requis) - Nom du projet LayerOps (créé si n'existe pas)
+- environmentName: string (requis) - Nom de l'environnement (créé si n'existe pas)
+- serviceName: string (optionnel) - Nom du service à créer (défaut: nom de l'application)
+- interactiveMode: boolean (optionnel, défaut: true) - Mode interactif avec questions/réponses
+- skipQuestions: boolean (optionnel, défaut: false) - Passer directement au déploiement si toutes les infos sont fournies
+- configuration: object (optionnel) - Configuration pré-remplie pour éviter les questions :
+  * ports: array - Ports à exposer
+  * env: object - Variables d'environnement (utiliser placeholders pour secrets)
+  * replicas: number - Nombre de répliques
+  * resources: object - CPU/mémoire si applicable
+
+EXEMPLE DE QUESTIONS TYPIQUES :
+
+Pour PostgreSQL :
+1. "Quel nom souhaitez-vous donner à cette instance PostgreSQL ?" (défaut: "postgresql")
+2. "Quel port souhaitez-vous exposer ?" (défaut: 5432)
+3. "Quel mot de passe pour l'utilisateur 'postgres' ?" → Utiliser placeholder {{POSTGRES_PASSWORD}}
+4. "Quelle base de données initiale créer ?" (défaut: "appdb")
+5. "Quelle version de PostgreSQL ?" (défaut: "latest")
+
+Pour WordPress :
+1. "Quel nom souhaitez-vous donner à ce site WordPress ?" (défaut: "wordpress")
+2. "Quel port pour l'accès web ?" (défaut: 80)
+3. "Quelle base de données utiliser ?" (créer nouvelle ou utiliser existante)
+4. "Nom de la base de données WordPress ?" (défaut: "wordpress")
+5. "Utilisateur de la base de données ?" (défaut: "wpuser")
+6. "Mot de passe de la base de données ?" → Utiliser placeholder {{DB_PASSWORD}}
+7. "Clé secrète WordPress ?" → Utiliser placeholder {{WP_SECRET_KEY}}
+
+GESTION DES ERREURS :
+- Si l'application n'existe pas dans la marketplace : suggérer des alternatives
+- Si des informations manquantes : demander à l'utilisateur
+- Si un secret est détecté dans une réponse : ALERTER immédiatement et demander régénération
+- Si le déploiement échoue : analyser l'erreur et proposer des solutions
+
+⚠️ RAPPEL SÉCURITÉ :
+- TOUJOURS utiliser des placeholders pour les secrets
+- JAMAIS inclure de valeurs réelles dans les messages
+- ALERTER si un secret est compromis
+- Documenter clairement comment configurer les secrets réels`,
+    arguments: [
+      {
+        name: 'applicationCategory',
+        description: 'Catégorie d\'application marketplace (ex: "database", "web-server", "monitoring", "development"). Si non fourni, présenter les catégories disponibles.',
+        required: false,
+      },
+      {
+        name: 'applicationName',
+        description: 'Nom de l\'application marketplace à déployer (ex: "postgresql", "nginx", "wordpress", "redis"). Si non fourni, présenter les applications disponibles.',
+        required: false,
+      },
+      {
+        name: 'projectName',
+        description: 'Nom du projet LayerOps où déployer l\'application. Le projet sera créé s\'il n\'existe pas.',
+        required: true,
+      },
+      {
+        name: 'environmentName',
+        description: 'Nom de l\'environnement LayerOps où déployer l\'application (ex: "production", "staging", "development"). L\'environnement sera créé s\'il n\'existe pas.',
+        required: true,
+      },
+      {
+        name: 'serviceName',
+        description: 'Nom du service à créer. Si non fourni, utiliser le nom de l\'application avec un suffixe si nécessaire.',
+        required: false,
+      },
+      {
+        name: 'interactiveMode',
+        description: 'Mode interactif avec questions/réponses pour guider l\'utilisateur. Si false, utiliser uniquement les valeurs fournies dans configuration.',
+        required: false,
+      },
+      {
+        name: 'skipQuestions',
+        description: 'Passer directement au déploiement si toutes les informations nécessaires sont fournies dans configuration. Ignoré si interactiveMode=true.',
+        required: false,
+      },
+      {
+        name: 'configuration',
+        description: 'Configuration pré-remplie pour éviter les questions. Format: {ports: [...], env: {...}, replicas: number, resources: {...}}. Utiliser des placeholders {{SECRET_NAME}} pour les secrets.',
+        required: false,
+      },
+    ],
+  },
+  {
+    name: 'layerops-deploy-from-definition',
+    description: `Déploie une application sur LayerOps à partir d'une définition de service (LayerOps YAML, Docker Compose, Helm chart, ou Kubernetes YAML). Utilise les prompts de conversion existants puis déploie le résultat.
+
+⚠️ SÉCURITÉ DES SECRETS - RÈGLE INVARIABLE :
+- JAMAIS inclure de mots de passe, clés API, tokens ou secrets dans les messages du chat
+- Utiliser UNIQUEMENT des placeholders : {{SECRET_NAME}} ou $SECRET_NAME
+- Les secrets doivent être fournis via :
+  * Variables d'environnement (recommandé)
+  * Fichier séparé non versionné (.env.local, secrets.json, etc.)
+  * Système de gestion de secrets externe
+- Si un secret est accidentellement inclus dans un message, ALERTER immédiatement l'utilisateur :
+  "⚠️ ALERTE SÉCURITÉ : Un secret a été compromis dans l'historique. Vous DEVEZ régénérer immédiatement : [nom du secret]"
+- Ne jamais stocker, logger ou transmettre les valeurs réelles des secrets
+- Lors de la conversion, remplacer automatiquement tous les secrets détectés par des placeholders
+
+INSTRUCTIONS DÉTAILLÉES :
+
+Phase 1 : Identification du format
+1. Analyser le fichier fourni pour déterminer son format :
+   - LayerOps YAML : structure avec services: [...]
+   - Docker Compose : version: "...", services: {...}
+   - Helm : Chart.yaml présent, values.yaml, templates/
+   - Kubernetes : apiVersion, kind: Deployment/Service/ConfigMap/Secret
+2. Si le format n'est pas identifiable : demander clarification à l'utilisateur
+
+Phase 2 : Conversion (si nécessaire)
+3. Si format Docker Compose :
+   - Utiliser le prompt layerops-convert-docker-compose
+   - Appeler avec dockerComposeFile, projectName, environmentId
+   - Récupérer la spécification LayerOps générée
+4. Si format Helm :
+   - Utiliser le prompt layerops-convert-helm
+   - Appeler avec helmChartPath, projectName, environmentId
+   - Récupérer la spécification LayerOps générée
+5. Si format Kubernetes :
+   - Utiliser le prompt layerops-convert-kubernetes
+   - Appeler avec kubernetesFiles, projectName, environmentId
+   - Récupérer la spécification LayerOps générée
+6. Si format LayerOps :
+   - Valider la structure selon le schéma de référence
+   - Parser directement le YAML
+7. Pendant la conversion :
+   - Détecter tous les secrets (mots de passe, tokens, clés)
+   - Remplacer par des placeholders {{SECRET_NAME}}
+   - Documenter les placeholders créés
+   - ALERTER si un secret est détecté dans le fichier source
+
+Phase 3 : Validation et préparation
+8. Valider la spécification LayerOps générée :
+   - Vérifier la structure selon le schéma de référence
+   - Vérifier que tous les services ont un nom unique
+   - Vérifier que les ports ne sont pas en conflit
+   - Vérifier que les dépendances entre services sont valides
+9. Identifier tous les placeholders de secrets :
+   - Lister tous les {{SECRET_NAME}} ou $SECRET_NAME
+   - Créer une liste documentée des secrets requis
+   - Fournir des instructions pour configurer chaque secret
+10. Vérifier ou créer le projet LayerOps :
+    - Si projectName fourni : vérifier existence avec layerops_list_projects
+    - Si n'existe pas : créer avec layerops_create_project
+    - Récupérer l'ID du projet
+11. Vérifier ou créer l'environnement :
+    - Si environmentId fourni : vérifier existence avec layerops_get_environment
+    - Si environmentName fourni : créer avec layerops_create_environment
+    - Récupérer l'ID de l'environnement
+
+Phase 4 : Déploiement
+12. Pour chaque service dans la spécification :
+    - Préparer les paramètres pour layerops_create_service :
+      * name : nom du service
+      * image : image Docker (extraite de dockerConfiguration)
+      * environmentId : ID récupéré
+      * ports : configuration des ports
+      * env : variables d'environnement (avec placeholders pour secrets)
+      * replicas : countMin/countMax
+    - Si des dépendances (links) : noter pour configuration après déploiement
+    - Appeler layerops_create_service
+    - Attendre la confirmation de création
+    - Récupérer l'ID du service créé
+13. Gérer les dépendances entre services :
+    - Si service A dépend de service B : attendre que B soit déployé
+    - Configurer les variables d'environnement pour les URLs de dépendances
+    - Utiliser les IDs de services créés pour les connexions
+14. Vérifier l'état de tous les services déployés :
+    - Pour chaque service : appeler layerops_get_service
+    - Vérifier que tous sont en état "running" ou "healthy"
+    - Si erreur : analyser et proposer des solutions
+
+Phase 5 : Documentation et instructions finales
+15. Générer un résumé du déploiement :
+    - Liste des services déployés avec leurs IDs
+    - Configuration appliquée (sans secrets réels)
+    - Placeholders de secrets à remplacer
+    - Instructions pour configurer les secrets réels
+    - Ordre de démarrage des services
+16. Fournir des instructions de configuration des secrets :
+    - Pour chaque placeholder {{SECRET_NAME}} :
+      * Expliquer à quoi sert ce secret
+      * Fournir des instructions pour le configurer via variable d'environnement
+      * Fournir des instructions pour le configurer via fichier .env.local
+    - ALERTER : "Ces secrets ne doivent JAMAIS être partagés dans le chat"
+17. Fournir des instructions de maintenance :
+    - Comment mettre à jour les services
+    - Comment surveiller les logs
+    - Comment sauvegarder les données si applicable
+    - Comment gérer les dépendances entre services
+
+FORMAT DES ARGUMENTS :
+- definitionFile: string (requis) - Contenu du fichier de définition (YAML) ou chemin vers le fichier. Peut être :
+  * LayerOps YAML (services: [...])
+  * Docker Compose (docker-compose.yml)
+  * Helm chart (chemin vers le dossier du chart)
+  * Kubernetes YAML (un ou plusieurs fichiers)
+- definitionFormat: string (optionnel) - Format explicite : "layerops", "docker-compose", "helm", "kubernetes". Si non fourni, détection automatique.
+- projectName: string (requis) - Nom du projet LayerOps (créé si n'existe pas)
+- environmentName: string (requis) - Nom de l'environnement LayerOps (créé si n'existe pas)
+- environmentId: string (optionnel) - ID de l'environnement existant (prioritaire sur environmentName)
+- autoDeploy: boolean (optionnel, défaut: true) - Déployer automatiquement après conversion. Si false, générer uniquement la spécification.
+- servicePrefix: string (optionnel) - Préfixe à ajouter aux noms de services (ex: "prod-", "k8s-")
+- secretPlaceholders: object (optionnel) - Mapping des secrets détectés vers des placeholders : {detectedSecret: "{{PLACEHOLDER_NAME}}"}
+- registrySecrets: object (optionnel) - Mapping des secrets de registries privés : {registryUrl: "layerops-secret-uuid"}
+
+EXEMPLE DE SÉQUENCE :
+
+1. Analyser definitionFile → détecter format "docker-compose"
+2. Appeler layerops-convert-docker-compose avec :
+   - dockerComposeFile: definitionFile
+   - projectName: "MonApp"
+   - environmentName: "production"
+   - outputFormat: "deploy"
+3. Récupérer spécification LayerOps avec placeholders {{DB_PASSWORD}}, {{API_KEY}}
+4. Créer/vérifier projet "MonApp" → récupérer projectId
+5. Créer/vérifier environnement "production" → récupérer environmentId
+6. Pour chaque service dans la spécification :
+   - layerops_create_service avec configuration (secrets remplacés par placeholders)
+7. Vérifier état de tous les services
+8. Générer résumé avec instructions pour configurer {{DB_PASSWORD}} et {{API_KEY}}
+
+GESTION DES ERREURS :
+- Si format non reconnu : demander clarification
+- Si conversion échoue : analyser l'erreur et proposer des solutions
+- Si un secret est détecté dans le fichier : ALERTER et remplacer par placeholder
+- Si déploiement échoue : analyser l'erreur, rollback si nécessaire
+- Si dépendances manquantes : identifier et proposer des solutions
+
+⚠️ RAPPEL SÉCURITÉ :
+- TOUJOURS remplacer les secrets par des placeholders lors de la conversion
+- JAMAIS inclure de valeurs réelles dans les messages
+- ALERTER si un secret est compromis
+- Documenter clairement comment configurer les secrets réels
+- Vérifier que les fichiers sources ne contiennent pas de secrets avant traitement`,
+    arguments: [
+      {
+        name: 'definitionFile',
+        description: 'Contenu du fichier de définition (YAML) ou chemin vers le fichier. Formats supportés : LayerOps YAML, Docker Compose, Helm chart (dossier), Kubernetes YAML. Peut être un fichier unique ou plusieurs fichiers séparés par des sauts de ligne.',
+        required: true,
+      },
+      {
+        name: 'definitionFormat',
+        description: 'Format explicite du fichier : "layerops", "docker-compose", "helm", "kubernetes". Si non fourni, détection automatique basée sur le contenu.',
+        required: false,
+      },
+      {
+        name: 'projectName',
+        description: 'Nom du projet LayerOps où déployer l\'application. Le projet sera créé s\'il n\'existe pas.',
+        required: true,
+      },
+      {
+        name: 'environmentName',
+        description: 'Nom de l\'environnement LayerOps où déployer l\'application (ex: "production", "staging"). L\'environnement sera créé s\'il n\'existe pas. Ignoré si environmentId est fourni.',
+        required: true,
+      },
+      {
+        name: 'environmentId',
+        description: 'ID de l\'environnement LayerOps existant. Si fourni, environmentName est ignoré et cet environnement est utilisé.',
+        required: false,
+      },
+      {
+        name: 'autoDeploy',
+        description: 'Déployer automatiquement après conversion. Si false, générer uniquement la spécification LayerOps sans déployer.',
+        required: false,
+      },
+      {
+        name: 'servicePrefix',
+        description: 'Préfixe à ajouter aux noms de services pour éviter les conflits (ex: "prod-", "k8s-", "migrated-").',
+        required: false,
+      },
+      {
+        name: 'secretPlaceholders',
+        description: 'Mapping des secrets détectés vers des placeholders personnalisés. Format: {detectedSecret: "{{PLACEHOLDER_NAME}}", ...}. Exemple: {"mypassword": "{{DB_PASSWORD}}", "mykey": "{{API_KEY}}"}.',
+        required: false,
+      },
+      {
+        name: 'registrySecrets',
+        description: 'Mapping des registries privés vers les secretUuid LayerOps. Format: {registryUrl: "layerops-secret-uuid"}. Exemple: {"myregistry.com": "uuid-123-456"}.',
+        required: false,
+      },
+    ],
+  },
 ];
 

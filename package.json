@@ -11,7 +11,10 @@
     "build": "tsc && chmod +x dist/index.js",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "inspect": "node scripts/inspect-with-env.js"
+    "inspect": "node scripts/inspect-with-env.js",
+    "check-conformity": "node scripts/check-swagger-conformity.js",
+    "check-payloads": "node scripts/check-swagger-payloads.js",
+    "check-and-fix-payloads": "node scripts/check-and-fix-payloads.js"
   },
   "keywords": [
     "mcp",

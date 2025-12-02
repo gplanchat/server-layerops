@@ -38,9 +38,9 @@ export function createTools(apiClient: LayerOpsApiClient) {
     // Environments
     {
       name: 'layerops_list_environments',
-      description: 'Liste tous les environnements ou ceux d\'un projet spécifique',
+      description: 'Liste les environnements d\'un projet',
       inputSchema: z.object({
-        projectId: z.string().optional().describe('ID du projet (optionnel)'),
+        projectId: z.string().describe('ID du projet'),
       }),
     },
     {
@@ -66,82 +66,17 @@ export function createTools(apiClient: LayerOpsApiClient) {
       }),
     },
 
-    // Instances
-    {
-      name: 'layerops_list_instances',
-      description: 'Liste toutes les instances ou celles d\'un environnement spécifique',
-      inputSchema: z.object({
-        environmentId: z.string().optional().describe('ID de l\'environnement (optionnel)'),
-      }),
-    },
-    {
-      name: 'layerops_get_instance',
-      description: 'Récupère les détails d\'une instance spécifique',
-      inputSchema: z.object({
-        instanceId: z.string().describe('ID de l\'instance'),
-      }),
-    },
-    {
-      name: 'layerops_create_instance',
-      description: 'Crée une nouvelle instance',
-      inputSchema: z.object({
-        name: z.string().describe('Nom de l\'instance'),
-        instanceType: z.string().describe('Type d\'instance (ex: t2.micro)'),
-        region: z.string().describe('Région (ex: eu-west-1)'),
-        environmentId: z.string().describe('ID de l\'environnement'),
-        image: z.string().optional().describe('Image OS (optionnel)'),
-        poolId: z.string().optional().describe('ID du pool d\'instances (optionnel)'),
-      }),
-    },
-    {
-      name: 'layerops_update_instance',
-      description: 'Met à jour une instance',
-      inputSchema: z.object({
-        instanceId: z.string().describe('ID de l\'instance'),
-        name: z.string().optional().describe('Nouveau nom (optionnel)'),
-        instanceType: z.string().optional().describe('Nouveau type (optionnel)'),
-      }),
-    },
-    {
-      name: 'layerops_delete_instance',
-      description: 'Supprime une instance',
-      inputSchema: z.object({
-        instanceId: z.string().describe('ID de l\'instance à supprimer'),
-      }),
-    },
-    {
-      name: 'layerops_start_instance',
-      description: 'Démarre une instance arrêtée',
-      inputSchema: z.object({
-        instanceId: z.string().describe('ID de l\'instance'),
-      }),
-    },
-    {
-      name: 'layerops_stop_instance',
-      description: 'Arrête une instance',
-      inputSchema: z.object({
-        instanceId: z.string().describe('ID de l\'instance'),
-      }),
-    },
-    {
-      name: 'layerops_restart_instance',
-      description: 'Redémarre une instance',
-      inputSchema: z.object({
-        instanceId: z.string().describe('ID de l\'instance'),
-      }),
-    },
-
     // Instance Pools
     {
       name: 'layerops_list_instance_pools',
-      description: 'Liste tous les pools d\'instances ou ceux d\'un environnement',
+      description: 'Liste les pools d\'instances d\'un environnement',
       inputSchema: z.object({
-        environmentId: z.string().optional().describe('ID de l\'environnement (optionnel)'),
+        environmentId: z.string().describe('ID de l\'environnement'),
       }),
     },
     {
       name: 'layerops_get_instance_pool',
-      description: 'Récupère les détails d\'un pool d\'instances',
+      description: 'Récupère les détails d\'un pool d\'instances spécifique',
       inputSchema: z.object({
         poolId: z.string().describe('ID du pool'),
       }),
@@ -150,11 +85,12 @@ export function createTools(apiClient: LayerOpsApiClient) {
       name: 'layerops_create_instance_pool',
       description: 'Crée un nouveau pool d\'instances avec autoscaling',
       inputSchema: z.object({
+        providerUuid: z.string().describe('UUID du provider'),
         name: z.string().describe('Nom du pool'),
         instanceType: z.string().describe('Type d\'instance'),
-        minInstances: z.number().describe('Nombre minimum d\'instances'),
-        maxInstances: z.number().describe('Nombre maximum d\'instances'),
-        environmentId: z.string().describe('ID de l\'environnement'),
+        minInstances: z.number().optional().describe('Nombre minimum d\'instances (optionnel)'),
+        maxInstances: z.number().optional().describe('Nombre maximum d\'instances (optionnel)'),
+        environmentId: z.string().optional().describe('ID de l\'environnement (optionnel)'),
         autoScaling: z.boolean().optional().describe('Activer l\'autoscaling (optionnel)'),
       }),
     },
@@ -178,9 +114,9 @@ export function createTools(apiClient: LayerOpsApiClient) {
     // Services
     {
       name: 'layerops_list_services',
-      description: 'Liste tous les services ou ceux d\'un environnement',
+      description: 'Liste les services d\'un environnement',
       inputSchema: z.object({
-        environmentId: z.string().optional().describe('ID de l\'environnement (optionnel)'),
+        environmentId: z.string().describe('ID de l\'environnement'),
       }),
     },
     {
@@ -210,6 +146,7 @@ export function createTools(apiClient: LayerOpsApiClient) {
       description: 'Met à jour un service',
       inputSchema: z.object({
         serviceId: z.string().describe('ID du service'),
+        name: z.string().optional().describe('Nouveau nom (optionnel)'),
         image: z.string().optional().describe('Nouvelle image (optionnel)'),
         env: z.record(z.string()).optional().describe('Nouvelles variables d\'environnement (optionnel)'),
       }),
@@ -223,84 +160,45 @@ export function createTools(apiClient: LayerOpsApiClient) {
     },
     {
       name: 'layerops_scale_service',
-      description: 'Met à l\'échelle un service (change le nombre de répliques)',
+      description: 'Met à jour le nombre de répliques d\'un service',
       inputSchema: z.object({
         serviceId: z.string().describe('ID du service'),
-        replicas: z.number().describe('Nouveau nombre de répliques'),
+        countMin: z.number().describe('Nombre minimum de répliques'),
+        countMax: z.number().describe('Nombre maximum de répliques'),
       }),
     },
 
     // Events
     {
       name: 'layerops_list_events',
-      description: 'Liste les événements d\'infrastructure et de service',
+      description: 'Liste les événements d\'une ressource',
       inputSchema: z.object({
-        resourceType: z.string().optional().describe('Type de ressource (instance, service, etc.)'),
-        resourceId: z.string().optional().describe('ID de la ressource'),
+        resourceType: z.enum(['environment', 'service', 'instancePool']).describe('Type de ressource'),
+        resourceId: z.string().describe('ID de la ressource'),
       }),
     },
     {
       name: 'layerops_get_event',
-      description: 'Récupère les détails d\'un événement spécifique',
+      description: 'Récupère un événement spécifique',
       inputSchema: z.object({
-        eventId: z.string().describe('ID de l\'événement'),
+        resourceType: z.enum(['environment', 'service', 'instancePool']).describe('Type de ressource'),
+        resourceId: z.string().describe('ID de la ressource'),
+        eventId: z.string().optional().describe('ID de l\'événement (optionnel, sinon retourne tous les événements)'),
       }),
     },
 
     // Monitoring
-    {
-      name: 'layerops_get_instance_monitoring',
-      description: 'Récupère les données de monitoring d\'une instance',
-      inputSchema: z.object({
-        instanceId: z.string().describe('ID de l\'instance'),
-        startTime: z.string().optional().describe('Date de début (ISO 8601)'),
-        endTime: z.string().optional().describe('Date de fin (ISO 8601)'),
-      }),
-    },
-    {
-      name: 'layerops_get_service_monitoring',
-      description: 'Récupère les données de monitoring d\'un service',
-      inputSchema: z.object({
-        serviceId: z.string().describe('ID du service'),
-        startTime: z.string().optional().describe('Date de début (ISO 8601)'),
-        endTime: z.string().optional().describe('Date de fin (ISO 8601)'),
-      }),
-    },
-
     // Analytics
     {
       name: 'layerops_get_analytics',
-      description: 'Récupère les analytics et coûts',
+      description: 'Récupère les analytics et coûts d\'un environnement',
       inputSchema: z.object({
-        environmentId: z.string().optional().describe('ID de l\'environnement (optionnel)'),
+        environmentId: z.string().describe('ID de l\'environnement'),
         startTime: z.string().optional().describe('Date de début (ISO 8601)'),
         endTime: z.string().optional().describe('Date de fin (ISO 8601)'),
       }),
     },
 
-    // RBAC
-    {
-      name: 'layerops_list_roles',
-      description: 'Liste tous les rôles RBAC disponibles',
-      inputSchema: z.object({}),
-    },
-    {
-      name: 'layerops_get_role',
-      description: 'Récupère les détails d\'un rôle RBAC',
-      inputSchema: z.object({
-        roleId: z.string().describe('ID du rôle'),
-      }),
-    },
-    {
-      name: 'layerops_assign_role',
-      description: 'Assigne un rôle à un utilisateur sur une ressource',
-      inputSchema: z.object({
-        userId: z.string().describe('ID de l\'utilisateur'),
-        roleId: z.string().describe('ID du rôle'),
-        resourceType: z.string().describe('Type de ressource (project, environment, instance, service)'),
-        resourceId: z.string().describe('ID de la ressource'),
-      }),
-    },
   ];
 }
 
@@ -323,8 +221,6 @@ export async function executeTool(
     // Environments
     case 'layerops_list_environments':
       return await apiClient.getEnvironments(args.projectId);
-    case 'layerops_get_environment':
-      return await apiClient.getEnvironment(args.environmentId);
     case 'layerops_create_environment':
       return await apiClient.createEnvironment({
         name: args.name,
@@ -333,34 +229,6 @@ export async function executeTool(
     case 'layerops_delete_environment':
       return await apiClient.deleteEnvironment(args.environmentId);
 
-    // Instances
-    case 'layerops_list_instances':
-      return await apiClient.getInstances(args.environmentId);
-    case 'layerops_get_instance':
-      return await apiClient.getInstance(args.instanceId);
-    case 'layerops_create_instance':
-      return await apiClient.createInstance({
-        name: args.name,
-        instanceType: args.instanceType,
-        region: args.region,
-        environmentId: args.environmentId,
-        image: args.image,
-        poolId: args.poolId,
-      });
-    case 'layerops_update_instance':
-      return await apiClient.updateInstance(args.instanceId, {
-        name: args.name,
-        instanceType: args.instanceType,
-      });
-    case 'layerops_delete_instance':
-      return await apiClient.deleteInstance(args.instanceId);
-    case 'layerops_start_instance':
-      return await apiClient.startInstance(args.instanceId);
-    case 'layerops_stop_instance':
-      return await apiClient.stopInstance(args.instanceId);
-    case 'layerops_restart_instance':
-      return await apiClient.restartInstance(args.instanceId);
-
     // Instance Pools
     case 'layerops_list_instance_pools':
       return await apiClient.getInstancePools(args.environmentId);
@@ -368,6 +236,7 @@ export async function executeTool(
       return await apiClient.getInstancePool(args.poolId);
     case 'layerops_create_instance_pool':
       return await apiClient.createInstancePool({
+        providerUuid: args.providerUuid,
         name: args.name,
         instanceType: args.instanceType,
         minInstances: args.minInstances,
@@ -399,33 +268,20 @@ export async function executeTool(
       });
     case 'layerops_update_service':
       return await apiClient.updateService(args.serviceId, {
+        name: args.name,
         image: args.image,
         env: args.env,
       });
     case 'layerops_delete_service':
       return await apiClient.deleteService(args.serviceId);
     case 'layerops_scale_service':
-      return await apiClient.scaleService(args.serviceId, args.replicas);
+      return await apiClient.scaleService(args.serviceId, args.countMin, args.countMax);
 
     // Events
     case 'layerops_list_events':
       return await apiClient.getEvents(args.resourceType, args.resourceId);
     case 'layerops_get_event':
-      return await apiClient.getEvent(args.eventId);
-
-    // Monitoring
-    case 'layerops_get_instance_monitoring':
-      return await apiClient.getMonitoringData(
-        args.instanceId,
-        args.startTime,
-        args.endTime
-      );
-    case 'layerops_get_service_monitoring':
-      return await apiClient.getServiceMonitoring(
-        args.serviceId,
-        args.startTime,
-        args.endTime
-      );
+      return await apiClient.getEvent(args.resourceType, args.resourceId, args.eventId);
 
     // Analytics
     case 'layerops_get_analytics':
@@ -433,19 +289,6 @@ export async function executeTool(
         args.environmentId,
         args.startTime,
         args.endTime
-      );
-
-    // RBAC
-    case 'layerops_list_roles':
-      return await apiClient.getRoles();
-    case 'layerops_get_role':
-      return await apiClient.getRole(args.roleId);
-    case 'layerops_assign_role':
-      return await apiClient.assignRole(
-        args.userId,
-        args.roleId,
-        args.resourceType,
-        args.resourceId
       );
 
     default:
