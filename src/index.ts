@@ -12,6 +12,7 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { LayerOpsApiClient } from './api/client.js';
 import type { LayerOpsConfig } from './types/index.js';
 import { DOCUMENTATION_RESOURCES } from './resources/documentation.js';
@@ -80,11 +81,40 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const tools = createTools(apiClient);
   return {
-    tools: tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    })),
+    tools: tools.map((tool) => {
+      // MCP Inspector valide les schémas avec Zod côté client et attend un JSON Schema
+      // avec type: "object" à la racine. Il faut convertir les schémas Zod en JSON Schema.
+      const jsonSchema = zodToJsonSchema(tool.inputSchema as any, {
+        name: tool.name,
+        target: 'jsonSchema7',
+      }) as any;
+      
+      // Construire le schéma final en format JSON Schema strict
+      // MCP Inspector valide avec Zod et attend exactement: { type: "object", properties: {...}, ... }
+      // Il faut s'assurer que c'est un objet JSON Schema pur, pas un objet Zod
+      const finalSchema = {
+        type: 'object' as const,
+        properties: (jsonSchema.properties || {}) as Record<string, any>,
+        additionalProperties: jsonSchema.additionalProperties !== undefined 
+          ? jsonSchema.additionalProperties 
+          : false,
+      };
+      
+      // Ajouter required seulement si présent et non vide
+      if (jsonSchema.required && Array.isArray(jsonSchema.required) && jsonSchema.required.length > 0) {
+        (finalSchema as any).required = jsonSchema.required;
+      }
+      
+      // S'assurer que le schéma est bien sérialisé en JSON Schema pur
+      // en le passant par JSON.parse/stringify pour éliminer toute référence Zod
+      const cleanSchema = JSON.parse(JSON.stringify(finalSchema));
+      
+      return {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: cleanSchema,
+      };
+    }),
   };
 });
 

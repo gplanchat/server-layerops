@@ -31,16 +31,16 @@ export class LayerOpsApiClient {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = await response.json().catch(() => ({})) as any;
         return {
           error: {
-            message: errorData.message || `HTTP ${response.status}: ${response.statusText}`,
-            code: errorData.code || String(response.status),
+            message: errorData?.message || `HTTP ${response.status}: ${response.statusText}`,
+            code: errorData?.code || String(response.status),
           },
         };
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as T;
       return { data };
     } catch (error) {
       return {

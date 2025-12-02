@@ -60,17 +60,26 @@ MCP Inspector permet de tester et déboguer le serveur MCP via une interface web
 
 ### Utilisation
 
-1. Compilez le projet :
+1. Créez un fichier `.env` à la racine avec vos credentials :
+```env
+LAYEROPS_API_KEY_ID=your-key-id
+LAYEROPS_API_KEY_SECRET=your-api-key-secret
+LAYEROPS_API_BASE_URL=https://api.layerops.io
+```
+
+2. Compilez le projet :
 ```bash
 npm run build
 ```
 
-2. Lancez MCP Inspector :
+3. Lancez MCP Inspector :
 ```bash
 npm run inspect
 ```
 
-3. L'interface web s'ouvrira automatiquement dans votre navigateur
+Le script `inspect` charge automatiquement le fichier `.env` et transmet les variables d'environnement à MCP Inspector, qui les passe ensuite au serveur MCP. **Le serveur MCP lui-même ne charge pas le fichier `.env`** - c'est MCP Inspector qui gère cela.
+
+4. L'interface web s'ouvrira automatiquement dans votre navigateur
 
 Pour plus de détails, consultez [documentation/MCP_INSPECTOR.md](documentation/MCP_INSPECTOR.md).
 
@@ -183,16 +192,37 @@ Le serveur expose plus de 30 tools MCP pour gérer votre infrastructure :
 
 ## Ressources MCP disponibles
 
-Le serveur expose également des ressources de documentation :
+Le serveur expose 18 ressources de documentation LayerOps :
 
-- `layerops://docs/introduction`
-- `layerops://docs/api/introduction`
-- `layerops://docs/security/api-keys`
-- `layerops://docs/instances`
-- `layerops://docs/services`
-- `layerops://docs/monitoring`
-- `layerops://docs/rbac`
-- `layerops://docs/environments`
+### Documentation générale
+- `layerops://docs/introduction` - Introduction à LayerOps
+- `layerops://docs/api/introduction` - Introduction à l'API LayerOps
+- `layerops://docs/examples` - Exemples d'applications
+
+### Gestion des ressources
+- `layerops://docs/projects` - Gestion des projets
+- `layerops://docs/environments` - Gestion des environnements
+- `layerops://docs/instances` - Gestion des instances
+- `layerops://docs/pools` - Pools d'instances avec autoscaling
+- `layerops://docs/services` - Gestion des services
+- `layerops://docs/marketplace` - Marketplace LayerOps
+
+### Sécurité
+- `layerops://docs/security/api-keys` - Clés API
+- `layerops://docs/security/platform-access` - Accès aux plateformes cloud
+- `layerops://docs/security/git-repositories` - Dépôts Git
+- `layerops://docs/security/docker-registries` - Registres Docker
+- `layerops://docs/security/s3-buckets` - Buckets S3
+
+### Monitoring et analytics
+- `layerops://docs/monitoring` - Monitoring et surveillance
+- `layerops://docs/events` - Événements et audit trail
+- `layerops://docs/analytics` - Analytics et coûts
+
+### Fonctionnalités avancées
+- `layerops://docs/rbac` - Contrôle d'accès basé sur les rôles
+- `layerops://docs/external-hosts` - Connexion d'hôtes externes
+- `layerops://docs/multi-providers` - Multi-fournisseurs cloud
 
 ## Exemple d'utilisation
 

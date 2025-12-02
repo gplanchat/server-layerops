@@ -26,6 +26,8 @@ LAYEROPS_API_KEY_SECRET=your-api-key-secret
 LAYEROPS_API_BASE_URL=https://api.layerops.io
 ```
 
+**Important** : Le fichier `.env` est chargé automatiquement par le script `inspect-with-env.js`. Le serveur MCP lui-même ne charge PAS le fichier `.env` - c'est MCP Inspector qui transmet ces variables d'environnement au serveur.
+
 ### 3. Lancement de MCP Inspector
 
 Lancez MCP Inspector avec la commande :
@@ -35,9 +37,11 @@ npm run inspect
 ```
 
 Cette commande va :
-1. Démarrer le serveur MCP
-2. Ouvrir une interface web dans votre navigateur
-3. Vous permettre de tester les tools et ressources
+1. Charger les variables d'environnement depuis le fichier `.env`
+2. Démarrer MCP Inspector avec ces variables
+3. Transmettre les variables au serveur MCP
+4. Ouvrir une interface web dans votre navigateur
+5. Vous permettre de tester les tools et ressources
 
 ### 4. Utilisation de l'interface
 
@@ -81,9 +85,19 @@ Une fois l'interface ouverte, vous pouvez :
 
 ### Le serveur ne démarre pas
 
-- Vérifiez que les variables d'environnement sont correctement définies
+- Vérifiez que le fichier `.env` existe et contient les variables nécessaires
+- Vérifiez que les variables d'environnement sont correctement définies dans `.env`
 - Vérifiez que le projet est compilé (`npm run build`)
 - Consultez les logs dans la console
+
+### Les variables d'environnement ne sont pas chargées
+
+Le script `scripts/inspect-with-env.js` charge automatiquement le fichier `.env` et transmet les variables à MCP Inspector. Si les variables ne sont pas chargées :
+
+- Vérifiez que le fichier `.env` est à la racine du projet
+- Vérifiez le format du fichier `.env` (une variable par ligne, format `KEY=value`)
+- Vérifiez que les noms des variables commencent par `LAYEROPS_`
+- Les variables d'environnement système ont la priorité sur celles du fichier `.env`
 
 ### Les tools retournent des erreurs
 
